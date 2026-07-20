@@ -6,6 +6,9 @@
   "scripts": {
     "typecheck": "turbo run typecheck",
     "eval": "turbo run eval",
+    "eval:models": "turbo run eval:models",
+    "eval:watch": "turbo run eval:watch",
+    "generate": "turbo run generate",
     "lint": "biome check",
     "lint:fix": "biome check --write",
     "lint:staged": "biome check --staged --no-errors-on-unmatched",

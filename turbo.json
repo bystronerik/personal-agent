@@ -4,6 +4,18 @@
     "typecheck": {},
     "eval": {
       "cache": false
+    },
+    "eval:watch": {
+      "cache": false,
+      "persistent": true
+    },
+    "eval:models": {
+      "cache": false,
+      "env": ["OPENROUTER_API_KEY", "OPENROUTER_MODEL"]
+    },
+    "generate": {
+      "cache": false,
+      "env": ["OPENROUTER_API_KEY", "OPENROUTER_MODEL"]
     }
   }
 }

@@ -1,0 +1,54 @@
+import { type Brief, BriefSchema } from '../schema'
+
+/**
+ * Hand-written reference brief. Every figure traces to a document in
+ * [syntheticNews](./synthetic-news.ts). Expected to score 1.00 on every check.
+ */
+export const referenceBrief = BriefSchema.parse({
+  generatedAt: '2026-07-20T06:00:00Z',
+  edition: 'morning',
+  headlines: [
+    {
+      title: 'Valdora holds policy rate at 4.25% after 18 months of tightening',
+      summary:
+        'The Central Bank of Valdora left its policy rate unchanged at 4.25 percent, ending a tightening cycle that ran 18 months. Three board members dissented in favour of a 25 basis point cut, and the bank trimmed its 2026 growth forecast to 1.4 percent.',
+      whyItMatters:
+        'A split board combined with a lower growth forecast suggests the next move is a cut rather than another hold.',
+      sourceIds: ['doc-01'],
+    },
+    {
+      title: 'Northwind Semiconductor misses on revenue and cuts guidance',
+      summary:
+        'Northwind reported quarterly revenue of 890 million credits, up 12 percent from a year earlier but below the 920 million analysts had modelled. Management cut full-year guidance, citing softer data-center demand. Shares fell 7.5 percent after hours.',
+      whyItMatters:
+        "Data-center demand has been the sector's load-bearing assumption, so a cut here reads across to the whole semiconductor complex.",
+      sourceIds: ['doc-02'],
+    },
+    {
+      title: 'Meridian Strait suspensions push container rates up 64%',
+      summary:
+        'Two carriers suspended transits through the Meridian Strait, lifting container rates on the route 64 percent this month and lengthening average transit times by 9 days. Harbourline estimates a sustained disruption would add 0.3 percentage points to goods inflation.',
+      whyItMatters:
+        'This is the first supply-side inflation impulse in several quarters, and it lands while the central bank is already leaning dovish.',
+      sourceIds: ['doc-03'],
+    },
+    {
+      title: 'Payrolls beat expectations as unemployment holds at 3.1%',
+      summary:
+        'Valdoran payrolls rose 310 thousand in June against a 240 thousand consensus, while the unemployment rate held at 3.1 percent. Average hourly earnings advanced 0.2 percent on the month, a pace consistent with cooling wage pressure.',
+      whyItMatters:
+        'A strong headline alongside soft wage growth is the combination that lets the bank cut without appearing to chase inflation.',
+      sourceIds: ['doc-05'],
+    },
+  ],
+  marketSummary:
+    "Crude settled at 71 credits a barrel, down 2.7 percent on the week as the Valdora Basin pipeline restarted ahead of schedule, while natural gas storage sits 11 percent above its seasonal average. Equity weakness was concentrated in semiconductors following Northwind's 7.5 percent after-hours decline.",
+  prediction: {
+    instrument: 'VLD100',
+    direction: 'down',
+    confidence: 0.58,
+    resolvesAt: '2026-07-21T20:00:00Z',
+    rationale:
+      'Freight disruption adds 0.3 percentage points to goods inflation just as the semiconductor complex absorbs a guidance cut. The dovish payrolls print is unlikely to offset both within a single session.',
+  },
+} satisfies Brief)

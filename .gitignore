@@ -37,3 +37,11 @@ dist
 # Env
 .env
 .env.local
+
+# Generated model output
+.artifacts
+
+# Evalite run history
+evalite-report.json
+.evalite
+eval-report.json

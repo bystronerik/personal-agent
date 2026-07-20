@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "eval": "tsx src/eval/run.ts"
+    "eval": "evalite run scorers.eval.ts",
+    "eval:models": "evalite run brief.eval.ts",
+    "eval:watch": "evalite watch",
+    "generate": "tsx --env-file-if-exists=../../.env src/scripts/generate.ts"
   },
   "dependencies": {
     "@openrouter/sdk": "^0.13.65",
