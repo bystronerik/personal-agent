@@ -1,4 +1,12 @@
-import type { Brief, BriefInput } from '../schema'
+import type {
+  Brief,
+  BriefInput,
+  Edition,
+  Prediction,
+  ResearchFindings,
+  Story,
+  SummaryDraft,
+} from '../schema'
 
 export type CheckResult = {
   name: string
@@ -41,7 +49,7 @@ function* matchNumbers(
   }
 }
 
-/** One value per number, with any scale word applied — what the brief asserts. */
+/** One value per number, with any scale word applied — what the prose asserts. */
 function claimedValuesIn(text: string): NumericClaim[] {
   return [...matchNumbers(text)].map(({ raw, base, scale }) => ({
     raw,
@@ -51,8 +59,8 @@ function claimedValuesIn(text: string): NumericClaim[] {
 
 /**
  * Both the scaled and unscaled reading of each number, so "310 thousand" in a
- * source backs a brief written as either "310,000" or "310 thousand". Keeping
- * the source side permissive and the brief side strict means a wrong scale
+ * source backs prose written as either "310,000" or "310 thousand". Keeping the
+ * source side permissive and the prose side strict means a wrong scale
  * ("310 million") is still caught.
  */
 function sourceValuesIn(text: string): number[] {
@@ -64,26 +72,26 @@ function sourceValuesIn(text: string): number[] {
   return values
 }
 
-const proseOf = (brief: Brief): string[] => [
-  brief.marketSummary,
-  brief.prediction.rationale,
-  ...brief.headlines.flatMap((s) => [s.title, s.summary, s.whyItMatters]),
-]
+const storyProse = (stories: Story[]): string[] =>
+  stories.flatMap((s) => [s.title, s.summary, s.whyItMatters])
+
+// --- primitives: each operates on the minimal data it needs, so one
+// implementation powers both a per-layer check and the end-to-end check. ---
 
 /** Every cited source id must exist in the input. */
-export function sourceIdsResolve(brief: Brief, input: BriefInput): CheckResult {
+function sourceIdsResolve(stories: Story[], input: BriefInput): CheckResult {
   const knownIds = new Set(input.docs.map((d) => d.id))
   const details: string[] = []
   let cited = 0
   let resolved = 0
 
-  for (const [i, story] of brief.headlines.entries()) {
+  for (const [i, story] of stories.entries()) {
     for (const id of story.sourceIds) {
       cited += 1
       if (knownIds.has(id)) {
         resolved += 1
       } else {
-        details.push(`headline[${i}] cites unknown source "${id}"`)
+        details.push(`story[${i}] cites unknown source "${id}"`)
       }
     }
   }
@@ -93,13 +101,13 @@ export function sourceIdsResolve(brief: Brief, input: BriefInput): CheckResult {
 }
 
 /**
- * Every number in the brief's prose must trace to a value in the source text.
- * Compares numeric values rather than digit strings, so "310,000" matches a
- * source that wrote "310 thousand". Known false positives remain for derived
- * figures ("3rd month in a row") and rounded ones ("about 4%" from "4.25%"),
- * which is why this contributes a score instead of gating.
+ * Every number in the prose must trace to a value in the source text. Compares
+ * numeric values rather than digit strings, so "310,000" matches a source that
+ * wrote "310 thousand". Known false positives remain for derived figures
+ * ("3rd month in a row") and rounded ones ("about 4%" from "4.25%"), which is
+ * why this contributes a score instead of gating.
  */
-export function numbersGrounded(brief: Brief, input: BriefInput): CheckResult {
+function numbersGrounded(prose: string[], input: BriefInput): CheckResult {
   const sourceValues = new Set(
     input.docs.flatMap((d) => [
       ...sourceValuesIn(d.title),
@@ -111,7 +119,7 @@ export function numbersGrounded(brief: Brief, input: BriefInput): CheckResult {
   let total = 0
   let grounded = 0
 
-  for (const text of proseOf(brief)) {
+  for (const text of prose) {
     for (const claim of claimedValuesIn(text)) {
       total += 1
       if (sourceValues.has(claim.value)) {
@@ -126,14 +134,15 @@ export function numbersGrounded(brief: Brief, input: BriefInput): CheckResult {
   return { name: 'numbersGrounded', score, details }
 }
 
-/** Flags briefs where most headlines lean on the same source document. */
-export function sourceDiversity(brief: Brief): CheckResult {
-  const distinct = new Set(brief.headlines.flatMap((s) => s.sourceIds))
-  const score = Math.min(1, distinct.size / brief.headlines.length)
+/** Flags a set of stories where most lean on the same source document. */
+function sourceDiversity(stories: Story[]): CheckResult {
+  const distinct = new Set(stories.flatMap((s) => s.sourceIds))
+  const score =
+    stories.length === 0 ? 0 : Math.min(1, distinct.size / stories.length)
   const details =
     score < 1
       ? [
-          `${brief.headlines.length} headlines drawn from only ${distinct.size} distinct source(s)`,
+          `${stories.length} stories drawn from only ${distinct.size} distinct source(s)`,
         ]
       : []
   return { name: 'sourceDiversity', score, details }
@@ -155,16 +164,18 @@ const MAX_HORIZON_DAYS = 7
 const DAY_MS = 86_400_000
 
 /** A prediction must resolve in the future and within a scoreable horizon. */
-export function predictionResolvable(brief: Brief): CheckResult {
-  const { prediction } = brief
-  const generated = Date.parse(brief.generatedAt)
+function predictionResolvable(
+  prediction: Prediction,
+  generatedAt: string,
+): CheckResult {
+  const generated = Date.parse(generatedAt)
   const resolves = Date.parse(prediction.resolvesAt)
   const horizonDays = (resolves - generated) / DAY_MS
 
   return scoreConditions('predictionResolvable', [
     {
       ok: resolves > generated,
-      msg: `resolvesAt (${prediction.resolvesAt}) is not after generatedAt (${brief.generatedAt})`,
+      msg: `resolvesAt (${prediction.resolvesAt}) is not after generatedAt (${generatedAt})`,
     },
     {
       ok: horizonDays <= MAX_HORIZON_DAYS,
@@ -174,19 +185,70 @@ export function predictionResolvable(brief: Brief): CheckResult {
 }
 
 /**
- * The prompt supplies both fields and instructs the model to echo them back.
- * Timestamps are compared as instants so a reformatted but equivalent
- * `generatedAt` still counts.
+ * The pipeline supplies both fields and echoes them back. Timestamps are compared
+ * as instants so a reformatted but equivalent `generatedAt` still counts.
  */
-export function echoesInput(brief: Brief, input: BriefInput): CheckResult {
+function echoesInput(
+  generatedAt: string,
+  edition: Edition,
+  input: BriefInput,
+): CheckResult {
   return scoreConditions('echoesInput', [
     {
-      ok: Date.parse(brief.generatedAt) === Date.parse(input.asOf),
-      msg: `generatedAt (${brief.generatedAt}) does not match the supplied asOf (${input.asOf})`,
+      ok: Date.parse(generatedAt) === Date.parse(input.asOf),
+      msg: `generatedAt (${generatedAt}) does not match the supplied asOf (${input.asOf})`,
     },
     {
-      ok: brief.edition === input.edition,
-      msg: `edition "${brief.edition}" does not match the supplied "${input.edition}"`,
+      ok: edition === input.edition,
+      msg: `edition "${edition}" does not match the supplied "${input.edition}"`,
     },
   ])
 }
+
+export type Check<T> = (artifact: T, input: BriefInput) => CheckResult
+
+/** Tags a check closure with the stable name it reports, so scorers can label it. */
+type NamedCheck<T> = Check<T> & { checkName: string }
+const named = <T>(checkName: string, check: Check<T>): NamedCheck<T> =>
+  Object.assign(check, { checkName })
+
+export type { NamedCheck }
+
+/** Research findings: grounded, well-sourced, diverse stories that echo the input. */
+export const RESEARCH_CHECKS: NamedCheck<ResearchFindings>[] = [
+  named('sourceIdsResolve', (f, i) => sourceIdsResolve(f.stories, i)),
+  named('numbersGrounded', (f, i) => numbersGrounded(storyProse(f.stories), i)),
+  named('sourceDiversity', (f) => sourceDiversity(f.stories)),
+  named('echoesInput', (f, i) => echoesInput(f.generatedAt, f.edition, i)),
+]
+
+/** A prediction: resolvable in a scoreable window, with a grounded rationale. */
+export const PREDICTION_CHECKS: NamedCheck<Prediction>[] = [
+  named('predictionResolvable', (p, i) => predictionResolvable(p, i.asOf)),
+  named('numbersGrounded', (p, i) => numbersGrounded([p.rationale], i)),
+]
+
+/** The brief body: grounded prose over well-sourced, diverse headlines. */
+export const SUMMARY_CHECKS: NamedCheck<SummaryDraft>[] = [
+  named('sourceIdsResolve', (s, i) => sourceIdsResolve(s.headlines, i)),
+  named('numbersGrounded', (s, i) =>
+    numbersGrounded([s.marketSummary, ...storyProse(s.headlines)], i),
+  ),
+  named('sourceDiversity', (s) => sourceDiversity(s.headlines)),
+]
+
+/** The assembled brief, end to end — every content check on the final artifact. */
+export const BRIEF_CHECKS: NamedCheck<Brief>[] = [
+  named('sourceIdsResolve', (b, i) => sourceIdsResolve(b.headlines, i)),
+  named('numbersGrounded', (b, i) =>
+    numbersGrounded(
+      [b.marketSummary, b.prediction.rationale, ...storyProse(b.headlines)],
+      i,
+    ),
+  ),
+  named('sourceDiversity', (b) => sourceDiversity(b.headlines)),
+  named('predictionResolvable', (b) =>
+    predictionResolvable(b.prediction, b.generatedAt),
+  ),
+  named('echoesInput', (b, i) => echoesInput(b.generatedAt, b.edition, i)),
+]

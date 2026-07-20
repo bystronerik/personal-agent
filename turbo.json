@@ -13,7 +13,7 @@
       "cache": false,
       "env": ["OPENROUTER_API_KEY", "OPENROUTER_MODEL"]
     },
-    "generate": {
+    "agent": {
       "cache": false,
       "env": ["OPENROUTER_API_KEY", "OPENROUTER_MODEL"]
     }

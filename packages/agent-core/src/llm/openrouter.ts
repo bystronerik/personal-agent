@@ -1,26 +1,14 @@
 import { OpenRouter } from '@openrouter/sdk'
 import { requireEnv } from '../utils/env'
+import { type Decoded, decodeJson, type ResponseSchema } from './decode'
+import { toWireSchema } from './json-schema'
 
 export type ChatMessage = {
   role: 'system' | 'user' | 'assistant'
   content: string
 }
 
-export type JsonSchemaFormat = {
-  name: string
-  schema: Record<string, unknown>
-}
-
-export type ChatCompletionRequest = {
-  model: string
-  messages: ChatMessage[]
-  temperature?: number
-  /** Constrains decoding to the schema, making malformed JSON impossible. */
-  jsonSchema?: JsonSchemaFormat
-}
-
-export type ChatCompletionResult = {
-  content: string
+type Completion = {
   model: string
   finishReason: string | null
   promptTokens?: number
@@ -28,33 +16,49 @@ export type ChatCompletionResult = {
   costUsd?: number
 }
 
-function createClient(): OpenRouter {
-  const apiKey = requireEnv(
-    'OPENROUTER_API_KEY',
-    'Copy .env.example to .env and add your key.',
-  )
-  return new OpenRouter({ apiKey })
+export type StructuredResult<T> = Completion & Decoded<T>
+
+/**
+ * A single schema-constrained completion. Tool-using loops go through
+ * `@openrouter/agent`'s `callModel` instead; this transport exists only for the
+ * no-tools structured transforms (prediction, summary).
+ */
+export type StructuredRequest<T> = {
+  model: string
+  messages: ChatMessage[]
+  temperature?: number
+  responseSchema: ResponseSchema<T>
 }
 
-export async function chatCompletion(
-  request: ChatCompletionRequest,
-): Promise<ChatCompletionResult> {
+function createClient(): OpenRouter {
+  return new OpenRouter({
+    apiKey: requireEnv(
+      'OPENROUTER_API_KEY',
+      'Copy .env.example to .env and add your key.',
+    ),
+  })
+}
+
+export async function chatCompletion<T>(
+  request: StructuredRequest<T>,
+): Promise<StructuredResult<T>> {
   const result = await createClient().chat.send({
     chatRequest: {
       model: request.model,
-      messages: request.messages,
+      messages: request.messages.map(({ role, content }) => ({
+        role,
+        content,
+      })),
       temperature: request.temperature,
       stream: false,
-      ...(request.jsonSchema && {
-        responseFormat: {
-          type: 'json_schema',
-          jsonSchema: {
-            name: request.jsonSchema.name,
-            schema: request.jsonSchema.schema,
-            strict: true,
-          },
+      responseFormat: {
+        type: 'json_schema' as const,
+        jsonSchema: {
+          name: request.responseSchema.name,
+          schema: toWireSchema(request.responseSchema.schema),
+          strict: true,
         },
-      }),
+      },
     },
   })
 
@@ -67,19 +71,21 @@ export async function chatCompletion(
     throw new Error('OpenRouter returned no choices')
   }
 
-  const { content } = choice.message
-  if (typeof content !== 'string' || content.length === 0) {
-    throw new Error(
-      `OpenRouter returned no text content (finishReason: ${choice.finishReason})`,
-    )
-  }
-
-  return {
-    content,
+  const completion: Completion = {
     model: result.model,
     finishReason: choice.finishReason,
     promptTokens: result.usage?.promptTokens,
     completionTokens: result.usage?.completionTokens,
     costUsd: result.usage?.cost ?? undefined,
   }
+
+  const { content } = choice.message
+  const text = typeof content === 'string' ? content : ''
+  if (text.length === 0) {
+    throw new Error(
+      `OpenRouter returned no text content (finishReason: ${choice.finishReason})`,
+    )
+  }
+
+  return { ...completion, ...decodeJson(text, request.responseSchema) }
 }

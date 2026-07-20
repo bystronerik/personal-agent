@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { BriefSchema } from '../schema'
 
 /**
  * Strict structured outputs reject these, but Zod still enforces them when the
@@ -31,6 +30,9 @@ function stripUnsupported(node: unknown): unknown {
   )
 }
 
-export const BRIEF_JSON_SCHEMA = stripUnsupported(
-  z.toJSONSchema(BriefSchema, { target: 'draft-7' }),
-) as Record<string, unknown>
+/** Converts a Zod schema to the JSON Schema dialect the wire accepts. */
+export function toWireSchema(schema: z.ZodType): Record<string, unknown> {
+  return stripUnsupported(
+    z.toJSONSchema(schema, { target: 'draft-7' }),
+  ) as Record<string, unknown>
+}
