@@ -1,0 +1,8 @@
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$staged" ] && exit 0
+
+pnpm lint:staged:fix
+
+# Re-stage only what was already staged, so unrelated working-tree edits
+# are not swept into the commit.
+printf '%s\n' "$staged" | tr '\n' '\0' | xargs -0 git add --

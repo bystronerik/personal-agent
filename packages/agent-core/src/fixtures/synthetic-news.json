@@ -1,0 +1,37 @@
+{
+  "_note": "SYNTHETIC test data. Every entity, place and figure here is invented. Never replace this with real reporting attributed to real organisations.",
+  "edition": "morning",
+  "asOf": "2026-07-20T06:00:00Z",
+  "docs": [
+    {
+      "id": "doc-01",
+      "title": "Central Bank of Valdora holds policy rate",
+      "body": "The Central Bank of Valdora held its policy rate at 4.25 percent on Thursday, pausing after 18 months of tightening. Three of the nine board members voted for a 25 basis point cut. The bank lowered its 2026 growth forecast to 1.4 percent from 2.1 percent, citing softer external demand.",
+      "publishedAt": "2026-07-19T14:30:00Z"
+    },
+    {
+      "id": "doc-02",
+      "title": "Northwind Semiconductor cuts full-year outlook",
+      "body": "Northwind Semiconductor reported quarterly revenue of 890 million credits, up 12 percent year over year but short of the 920 million analysts expected. The company cut its full-year outlook, citing weaker demand from data-center customers. Shares fell 7.5 percent in after-hours trading.",
+      "publishedAt": "2026-07-19T21:05:00Z"
+    },
+    {
+      "id": "doc-03",
+      "title": "Meridian Strait suspensions lift container rates",
+      "body": "Container rates on the Meridian Strait route rose 64 percent this month after two carriers suspended transits. Average transit times have lengthened by 9 days. Analysts at Harbourline estimate the disruption adds 0.3 percentage points to goods inflation if sustained through the quarter.",
+      "publishedAt": "2026-07-19T09:15:00Z"
+    },
+    {
+      "id": "doc-04",
+      "title": "Crude eases as Valdora Basin pipeline restarts",
+      "body": "Benchmark crude settled at 71 credits a barrel, down 2.7 percent on the week, as the Valdora Basin pipeline resumed operation ahead of schedule. Natural gas storage sits 11 percent above the seasonal average.",
+      "publishedAt": "2026-07-19T18:00:00Z"
+    },
+    {
+      "id": "doc-05",
+      "title": "Valdoran payrolls beat consensus in June",
+      "body": "Valdoran payrolls grew by 310 thousand in June, well above the 240 thousand consensus. The unemployment rate held at 3.1 percent. Average hourly earnings rose 0.2 percent on the month, a pace consistent with gradually cooling wage pressure.",
+      "publishedAt": "2026-07-19T12:00:00Z"
+    }
+  ]
+}
