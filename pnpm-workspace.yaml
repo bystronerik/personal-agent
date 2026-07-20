@@ -2,6 +2,11 @@ packages:
   - "packages/*"
   - "apps/*"
 allowBuilds:
-  # esbuild ships prebuilt binaries and needs its install script to select one.
-  # Required by tsx, which runs the eval harness directly from TypeScript.
+  # Optional staleness warning only: fetches the live model list and compares it
+  # to the SDK's bundled types. Declined to keep installs offline.
+  '@openrouter/sdk': false
+  # Native module. Evalite stores eval run history in SQLite.
+  better-sqlite3: true
+  # Ships prebuilt binaries and needs its install script to select one.
+  # Required by tsx and vitest.
   esbuild: true
