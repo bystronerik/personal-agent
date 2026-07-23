@@ -43,11 +43,8 @@ function search(docs: SourceDoc[], query: string, limit: number): SourceDoc[] {
 }
 
 /**
- * Search deliberately withholds bodies so the model has to decide which stories
- * are worth a fetch, rather than being handed the whole corpus in one turn.
- *
- * Flow 1: swapping this keyword impl for a semantic (embeddings + pgvector)
- * search_news is an impl change behind the same tool — nothing else moves.
+ * Search withholds article bodies, so the model must decide which stories are
+ * worth a `fetch_article` call rather than receiving the whole corpus at once.
  */
 export function createNewsTools(docs: SourceDoc[]) {
   return [

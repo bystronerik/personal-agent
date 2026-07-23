@@ -2,7 +2,7 @@ import { type Brief, BriefSchema } from '../schema'
 
 /**
  * Deliberately defective brief — valid per schema, but trips every check in
- * `eval/checks.ts`. Exists to prove the scorers discriminate; each defect is
+ * `grading/checks.ts`. Exists to prove the scorers discriminate; each defect is
  * annotated with the check it fails. Figures contradict [syntheticNews](./synthetic-news.ts)
  * rather than merely omitting it, so `numbersGrounded` has something to catch.
  */

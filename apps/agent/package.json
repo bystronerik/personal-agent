@@ -1,5 +1,5 @@
 {
-  "name": "@personal-agent/agent-core",
+  "name": "@personal-agent/agent",
   "version": "0.1.0",
   "private": true,
   "type": "module",

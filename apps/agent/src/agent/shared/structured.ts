@@ -14,8 +14,7 @@ export type StructuredRequest<T> = {
 
 /**
  * One schema-constrained model call with no tools — the transform the
- * prediction and summary agents run. Kept as a seam so the agents never touch
- * the transport, and so structured decoding stays consistent with the loops.
+ * prediction and summary agents run.
  */
 export function structuredComplete<T>({
   model,
