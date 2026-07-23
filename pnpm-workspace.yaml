@@ -5,8 +5,21 @@ allowBuilds:
   # Optional staleness warning only: fetches the live model list and compares it
   # to the SDK's bundled types. Declined to keep installs offline.
   '@openrouter/sdk': false
+  # Downloads the schema engine binary the Prisma CLI shells out to for
+  # migrations. Prisma 7 runs queries through a driver adapter, so this is a
+  # CLI-only dependency.
+  '@prisma/engines': true
+  # Pulled in by @nestjs/core. Phones install telemetry home. Declined.
+  '@scarf/scarf': false
+  # Native module. Selects the platform-specific SWC binary the server's
+  # @swc-node/register runtime compiles through.
+  '@swc/core': true
   # Native module. Evalite stores eval run history in SQLite.
   better-sqlite3: true
+  # Reached through @auth0/auth0-spa-js. Its postinstall only prints an advert.
+  browser-tabs-lock: false
   # Ships prebuilt binaries and needs its install script to select one.
   # Required by tsx and vitest.
   esbuild: true
+  # Its preinstall/postinstall pair resolves the platform-specific engine build.
+  prisma: true

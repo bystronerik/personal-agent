@@ -1,0 +1,72 @@
+# `@personal-agent/db`
+
+Owns the Prisma schema, the migrations, and the generated client. **This is the
+only package that talks to Postgres** — nothing else constructs a Prisma client
+or handles a connection string. Its one workspace dependency is
+`@personal-agent/env` (CLI-time, for `DATABASE_URL`); its one consumer today is
+`apps/server`. See the [root CLAUDE.md](../../CLAUDE.md) for the workspace-wide
+picture.
+
+## Commands
+
+Run from the repo root (`pnpm db:*`) or here directly.
+
+| Command | Effect |
+| --- | --- |
+| `pnpm db:up` / `pnpm db:down` | Start or stop the Postgres container (repo-root `docker-compose.yml`). |
+| `pnpm db:migrate` | `prisma migrate dev` — author and apply a migration. |
+| `pnpm db:studio` | Browse the data. |
+| `migrate:deploy` | `prisma migrate deploy`, for a non-interactive apply. |
+| `generate` | Regenerate the client into `src/generated/`. Runs as part of root `pnpm generate`. |
+
+The container is `pgvector/pgvector:pg17` with `agent/agent/agent` on `:5432`,
+matching the `DATABASE_URL` in `.env.example`. The image carries pgvector for
+intended semantic search, but the schema has no vector column and nothing embeds
+anything yet.
+
+## Prisma 7
+
+Prisma 7 changed enough to be worth stating explicitly — most of what is written
+online still describes 6:
+
+- The generator is **`prisma-client`**, not `prisma-client-js`.
+- **`output` is required** and lands in `src/generated/` (gitignored, regenerated
+  by `pnpm generate`).
+- Connection settings live in **`prisma.config.ts`**, not the `datasource` block —
+  the block declares only the provider.
+- A **driver adapter is mandatory** (`@prisma/adapter-pg`). Everything constructs
+  its client through `createPrismaClient(connectionString)` so the adapter choice
+  and its options stay in one place.
+- `importFileExtension = ""` — the generated client emits bare specifiers, which is
+  exactly what the workspace's `bundler` resolution consumes; the whole repo runs
+  its TypeScript unbuilt, so nothing needs the Node-style `.js`.
+- `prisma.config.ts` loads the repo-root `.env` itself — Prisma 7 no longer reads
+  `.env` on its own, and the repo keeps a single root `.env` rather than one per
+  package. The value is read through `@personal-agent/env` — the `DATABASE_URL`
+  declaration re-wrapped with a local `.default()` — so the variable name and its
+  validation stay shared while only the fallback is this package's. Falling back
+  rather than requiring the variable keeps `prisma generate` — which never opens a
+  connection — working on a fresh clone; keeping the default *here* keeps
+  `apps/server` failing at boot on a missing URL instead of dialling localhost.
+- `@prisma/engines` is allowed to build (see `pnpm-workspace.yaml`): it downloads
+  the schema engine the CLI shells out to for migrations. It is a **CLI-only**
+  dependency, since queries now go through the driver adapter.
+
+## Module resolution
+
+Like the rest of the workspace, this package is `bundler` resolution with **no
+import extension** and **no build**: `src/index.ts` is the entry consumers compile
+just-in-time (today only `apps/server`, via swc-node). The generated client is
+emitted `importFileExtension = ""` to match, including `./generated/client`. `tsc`
+here only typechecks (`--noEmit`), and `prisma.config.ts` is in `include` for that.
+
+## Schema
+
+`src/index.ts` is the public surface: `createPrismaClient`, plus `Prisma`,
+`PrismaClient` and the model types re-exported from the generated client, so
+consumers never reach into `src/generated/` themselves.
+
+`Topic` is the only model — a news subject the brief should research. It is
+scoped by `userId` (the Auth0 `sub`) with a `@@unique([userId, subject])`, single
+user or not. Triple-slash doc comments on models and fields are intentional:
+Prisma carries them into the generated types.

@@ -34,6 +34,13 @@ dist
 .turbo
 *.tsbuildinfo
 
+# Code generation output
+packages/db/src/generated
+apps/client/src/generated/*
+!apps/client/src/generated/.gitkeep
+apps/server/src/generated/*
+!apps/server/src/generated/.gitkeep
+
 # Env
 .env
 .env.local

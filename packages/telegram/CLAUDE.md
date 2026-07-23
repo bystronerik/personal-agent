@@ -1,9 +1,9 @@
 # `@personal-agent/telegram`
 
 A thin delivery layer over [grammY](https://grammy.dev) for sending the brief.
-Standalone — no workspace dependencies and no dependents yet; wiring it to the
-agent is future work. See the [root CLAUDE.md](../../CLAUDE.md) for the
-workspace-wide picture.
+Its only workspace dependency is `@personal-agent/env` (a leaf, for config
+loading), and it has no dependents yet; wiring it to the agent is future work.
+See the [root CLAUDE.md](../../CLAUDE.md) for the workspace-wide picture.
 
 grammY owns the transport, the response envelope, and error typing. What is left
 here is what grammY has no opinion about: env validation, message splitting, and
@@ -93,9 +93,10 @@ per chat only for requests it receives in order.
 
 `loadTelegramConfig()` validates the full config (token, chat id, optional API
 root); `loadBotConnection()` validates only what a call needs, because chat-id
-discovery runs *before* a chat id exists. Both share one `load()` that reports
-every problem at once, keyed by the real environment variable name and pointing
-at `.env.example`.
+discovery runs *before* a chat id exists. Each builds its field spec from the
+`TELEGRAM_*` variables in `@personal-agent/env` and validates through the shared
+`loadEnv`, which reports every problem at once, keyed by the real environment
+variable name and pointing at `.env.example`.
 
 The field is `apiRoot`, matching grammY's vocabulary; the environment variable
 remains `TELEGRAM_API_BASE`. The token and chat id are regex-checked
