@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "eval": "evalite run scorers.eval.ts",
     "eval:models": "evalite run model.eval",
     "eval:watch": "evalite watch",

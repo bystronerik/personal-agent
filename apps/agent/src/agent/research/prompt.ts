@@ -1,4 +1,5 @@
 import type { BriefInput } from '../../schema'
+import { BOUNDS } from '../prompts/bounds'
 
 /** The reader's standing interests — what "relevant to me" means for research. */
 export const INTERESTS = [
@@ -20,7 +21,7 @@ While researching:
 - Prefer drawing each story from a different document.
 - Judge how much depth each story warrants — not every result deserves a fetch.
 
-When you have 3 to 7 stories that fairly cover what matters, call record_findings exactly once with them, then stop. Every figure in a story must appear verbatim in a fetched document — do not compute, round, convert, or invent numbers.`
+When you have ${BOUNDS.stories} stories that fairly cover what matters, call record_findings exactly once with them, then stop. Every figure in a story must appear verbatim in a fetched document — do not compute, round, convert, or invent numbers.`
 
 export function researchTask(input: BriefInput, focus?: string): string {
   const emphasis = focus ? `\nEmphasis for this run: ${focus}` : ''

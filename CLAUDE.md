@@ -87,7 +87,7 @@ Every command is a root script; Turbo fans it out to the workspaces that define 
 | `pnpm generate` | Prisma client, OpenAPI document, portal's typed client. |
 | `pnpm build` | The one compiled artifact — the client's Vite bundle. Internal packages have no build. |
 | `pnpm typecheck` / `pnpm lint` | tsc, and Biome (`lint:fix` writes). |
-| `pnpm test` | Vitest (currently only `packages/telegram`). |
+| `pnpm test` | Vitest (`packages/telegram`, `apps/agent`). |
 
 Per-app commands (`eval`/`eval:*`, `agent`, `dev`, `telegram:*`, `db:*`) live in
 their package's `CLAUDE.md`.

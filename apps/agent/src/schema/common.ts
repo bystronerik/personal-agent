@@ -7,6 +7,11 @@ export const IsoDateTime = z
 export const EditionSchema = z.enum(['morning', 'evening'])
 
 /** Shared by the summary draft and the assembled brief. */
-export const MarketSummarySchema = z.string().min(50).max(1000)
+export const MARKET_SUMMARY_LENGTH = { min: 50, max: 1000 } as const
+
+export const MarketSummarySchema = z
+  .string()
+  .min(MARKET_SUMMARY_LENGTH.min)
+  .max(MARKET_SUMMARY_LENGTH.max)
 
 export type Edition = z.infer<typeof EditionSchema>

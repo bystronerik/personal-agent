@@ -19,7 +19,7 @@ export async function runPrediction(ctx: AgentContext): Promise<Prediction> {
   const result = await structuredComplete({
     model: ctx.model,
     messages: predictionMessages(findings),
-    schema: PREDICTION_SCHEMA,
+    responseSchema: PREDICTION_SCHEMA,
     temperature: 0,
   })
   ctx.pool.record(result.costUsd)

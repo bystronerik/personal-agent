@@ -1,3 +1,4 @@
+import type { LoopClient } from '../../llm/client'
 import type { Blackboard } from './blackboard'
 import { type Budget, type BudgetPool, softExceeded } from './budget'
 
@@ -7,6 +8,8 @@ export type AgentContext = {
   board: Blackboard
   pool: BudgetPool
   budget: Budget
+  /** Carried rather than reached for, so a loop can be driven without a key. */
+  client: LoopClient
 }
 
 export const FINALIZE_NOTICE =

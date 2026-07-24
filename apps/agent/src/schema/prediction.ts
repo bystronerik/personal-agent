@@ -3,16 +3,27 @@ import { IsoDateTime } from './common'
 
 export const DirectionSchema = z.enum(['up', 'down', 'flat'])
 
+/** Ticker or index symbol, e.g. "SPX". */
+export const INSTRUMENT_LENGTH = { min: 1, max: 16 } as const
+
+/**
+ * Probability the stated direction is correct. Floor 0.34: below that on a
+ * three-way call, a different direction should have been picked. Ceiling 0.99:
+ * keeps log-loss finite if the scoring rule changes.
+ */
+export const CONFIDENCE = { min: 0.34, max: 0.99 } as const
+
+/**
+ * The window a logged prediction must resolve within. The schema cannot enforce
+ * it — `resolvesAt` has no reference date to measure from here — so this is the
+ * single value the prompt states and `grading/checks.ts` scores against.
+ */
+export const MAX_HORIZON_DAYS = 7
+
 export const PredictionSchema = z.object({
-  /** Ticker or index symbol, e.g. "SPX". */
-  instrument: z.string().min(1).max(16),
+  instrument: z.string().min(INSTRUMENT_LENGTH.min).max(INSTRUMENT_LENGTH.max),
   direction: DirectionSchema,
-  /**
-   * Probability the stated direction is correct. Floor 0.34: below that on a
-   * three-way call, a different direction should have been picked. Ceiling
-   * 0.99: keeps log-loss finite if the scoring rule changes.
-   */
-  confidence: z.number().min(0.34).max(0.99),
+  confidence: z.number().min(CONFIDENCE.min).max(CONFIDENCE.max),
   resolvesAt: IsoDateTime,
   rationale: z.string().min(20).max(600),
 })

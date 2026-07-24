@@ -1,31 +1,14 @@
-import type { ResponseSchema } from '../../llm/decode'
-import {
-  type ChatMessage,
-  chatCompletion,
-  type StructuredResult,
-} from '../../llm/openrouter'
+import { chatCompletion } from '../../llm/openrouter'
 
-export type StructuredRequest<T> = {
-  model: string
-  messages: ChatMessage[]
-  schema: ResponseSchema<T>
-  temperature?: number
-}
+export type {
+  ChatMessage,
+  StructuredRequest,
+  StructuredResult,
+} from '../../llm/openrouter'
 
 /**
  * One schema-constrained model call with no tools — the transform the
- * prediction and summary agents run.
+ * prediction and summary agents run. This seam is the reason no agent imports
+ * the transport directly.
  */
-export function structuredComplete<T>({
-  model,
-  messages,
-  schema,
-  temperature,
-}: StructuredRequest<T>): Promise<StructuredResult<T>> {
-  return chatCompletion({
-    model,
-    messages,
-    temperature,
-    responseSchema: schema,
-  })
-}
+export const structuredComplete = chatCompletion

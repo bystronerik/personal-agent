@@ -7,7 +7,12 @@ export const StorySchema = z.object({
   sourceIds: z.array(z.string().min(1)).min(1),
 })
 
-/** A brief carries 3 to 7 stories, whether as research findings or headlines. */
-export const StoriesSchema = z.array(StorySchema).min(3).max(7)
+/** A brief carries this many stories, whether as research findings or headlines. */
+export const STORY_COUNT = { min: 3, max: 7 } as const
+
+export const StoriesSchema = z
+  .array(StorySchema)
+  .min(STORY_COUNT.min)
+  .max(STORY_COUNT.max)
 
 export type Story = z.infer<typeof StorySchema>

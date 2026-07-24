@@ -12,30 +12,34 @@ today the worker is exercised end-to-end by the `agent` dev script and the evals
 ## Layout
 
 ```
-src/schema/      Zod schemas, one narrow file each + barrel (source of truth)
-src/llm/         @openrouter/sdk transport for structured calls; model ids
-src/agent/       shared/ (client, budget, blackboard, structured, run-context)
+src/schema/      Zod schemas, one narrow file each + barrel (source of truth),
+                 including the bound constants the schemas are built from
+src/llm/         client.ts owns the key, both SDK clients and env reads;
+                 @openrouter/sdk transport for structured calls; model ids
+src/agent/       shared/ (budget, blackboard, structured, run-context)
+                 + prompts/ (fragments more than one agent needs)
                  + research/ prediction/ summary/ orchestrator/ — each an agent
-                 with its own prompt; index.ts barrel
+                 with its own prompt
 src/tools/       news search/fetch, as @openrouter/agent `tool()`s
 src/grading/     checks.ts — scoring logic, imports no test framework
-src/eval/        scorers.ts adapts grading/ to evalite; *.eval.ts are the suites
+src/eval/        scorers.ts adapts grading/ to evalite; models.ts is the shared
+                 fan-out/budget/context; *.eval.ts are the suites
                  (*.model.eval.ts run the model)
 src/fixtures/    synthetic input + per-layer sample artifacts, as typed consts
-src/scripts/     one-off dev CLIs (not part of any eval)
-src/utils/       env access, Zod issue formatting
+src/scripts/     one-off dev CLIs (not part of any eval) + runScript
 ```
 
 The worker has **no build** — it runs through `tsx`, and nothing imports it as a
 library (it is top-of-graph, not a dependency), so `typecheck` already catches the
-ESM mistakes a build would. It *does* carry barrels (`schema/index.ts`,
-`agent/index.ts`): DRY is the priority, so a single import surface and shared
-interfaces beat duplication.
+ESM mistakes a build would. The one barrel is `schema/index.ts`, where a single
+import surface beats naming eight files at every call site; everywhere else
+consumers import the module they mean.
 
 ## Commands
 
 | Command | Effect |
 | --- | --- |
+| `pnpm test` | `vitest run` — the unit tests (`*.test.ts`); `.eval.ts` files are not picked up. |
 | `pnpm eval` | `evalite run scorers.eval.ts` — offline scorer regression, free, no key. |
 | `pnpm eval:models` | `evalite run model.eval` — every `*.model.eval.ts`, across every model in `llm/models.ts`. Costs money. |
 | `pnpm eval:watch` | Evalite watch mode + UI on `localhost:3006`. |
@@ -50,6 +54,7 @@ Four agents, each a directory with `agent.ts` + `prompt.ts`:
   still empty is filled directly, because a budget stop can halt the loop
   mid-pipeline and a valid `Brief` must still assemble. Order matters there —
   predict and summarize read the findings the research step leaves on the board.
+  The finalize runs on `finalizeBudget`, not the run's own budget; see below.
 - **`research/`** — a `callModel` loop over the news tools. It finishes by calling
   `record_findings`, whose *input schema is the findings shape*: the submission is
   SDK-validated and `hasToolCall('record_findings')` ends the loop cleanly, with
@@ -67,8 +72,9 @@ tool. Those tools return a **compact digest** (counts and titles), not the paylo
 `findings`, `prediction`, `summary`. The orchestrator model sequences the agents;
 the blackboard carries the actual payloads so they never travel as
 model-serialized tool arguments. `AgentContext` (`shared/run-context.ts`) bundles
-`{ model, board, pool, budget }` so every agent's `run` signature is uniform and
-each layer stays testable in isolation.
+`{ model, board, pool, budget, client }` so every agent's `run` signature is
+uniform and each layer stays testable in isolation. The `client` is carried
+rather than reached for, so a loop can be driven without an API key.
 
 ### The budget
 
@@ -82,18 +88,32 @@ sees the current loop, which is why `budgetStop` exists alongside it.
 Crossing the **soft** limit does not stop anything; `withBudgetNotice` attaches a
 `notice` field to the specialist tools' digests. The nudge arrives as *data in a
 tool result* rather than a mid-loop message injection, because the orchestrator
-already reads tool results. The **hard** limit stops the loop, and the finalize
-path above is what still produces a brief.
+already reads tool results. The **hard** limit stops the loop.
+
+`finalizeBudget` is what then lets a brief still assemble. Because `budgetStop`
+closes over the shared pool, the condition that halted the orchestrator is
+*already true* for every nested loop — so on the run's own budget the finalize
+research would be stopped before its first turn and `runResearch` would throw.
+`finalizeBudget` lifts the ceiling to `spent + reserveUsd` (default: half the
+hard limit), giving that path room the loop cannot have consumed while the pool
+keeps one honest total. `shared/budget.test.ts` asserts both halves. Note that
+`runPrediction` and `runSummary` are single calls with no stop condition at all,
+so the finalize can overshoot the reserve — a deliberate trade, since refusing to
+run would lose the brief the finalize exists to save.
 
 Default budget is a cautious `{ soft: 0.15, hard: 0.30 }`; a real caller passes
 limits sized to the model and corpus.
 
 ### Two clients, deliberately
 
-- `agent/shared/client.ts` — the `@openrouter/agent` client, for the loops.
-- `llm/openrouter.ts` — the `@openrouter/sdk` transport, for single structured
-  calls, reached only through `agent/shared/structured.ts` so the agents never
-  touch transport directly.
+Both live in `llm/client.ts`, which owns the credential and memoizes each:
+
+- the `@openrouter/agent` client, for the loops — narrowed to `LoopClient` on the
+  way into `AgentContext`.
+- the `@openrouter/sdk` transport, for single structured calls, reached only
+  through `agent/shared/structured.ts` so the agents never touch transport
+  directly. That seam re-exports the transport's own `StructuredRequest` rather
+  than restating it.
 
 ## Structured output
 
@@ -108,11 +128,22 @@ Zod still guarantees *bounds* after parsing. This is not cosmetic — when it wa
 measured, stripping took one model from consistently-invalid JSON to consistently
 valid, while another was unaffected either way.
 
-`decode.ts` tolerates a markdown-fenced response and reports it via `wasFenced`
-rather than failing, and raises schema mismatches with the offending path.
+The consequence is that **prompt prose is the only channel that carries a bound
+to the model**, and Zod rejects a violation afterwards as a thrown decode error
+rather than a retry. So the prose is not written by hand: `schema/` exports the
+bounds as named constants (`STORY_COUNT`, `CONFIDENCE`, `MARKET_SUMMARY_LENGTH`,
+`INSTRUMENT_LENGTH`, `MAX_HORIZON_DAYS`), the schemas are built from them, and
+`agent/prompts/bounds.ts` renders the fragments the prompts interpolate from the
+same constants. Widening a bound updates every prompt that states it.
+`MAX_HORIZON_DAYS` is there too even though the schema cannot enforce it —
+`resolvesAt` has no reference date to measure from — so the prompt and
+`grading/checks.ts` at least agree by construction rather than by coincidence.
 
-`models.ts` holds `DEFAULT_MODEL` (overridable per run by `OPENROUTER_MODEL`) and
-`COMPARED_MODELS`, whose first entry is the default.
+`decode.ts` tolerates a markdown-fenced response rather than failing, and raises
+schema mismatches with the offending path.
+
+`models.ts` holds `DEFAULT_MODEL`, `COMPARED_MODELS` (whose first entry is the
+default), and `resolveModel(override?)` — the single override-then-`OPENROUTER_MODEL`-then-default rule.
 
 ## Tools
 
@@ -156,11 +187,22 @@ test-harness plumbing.
 `eval/scorers.ts` wraps each named check as an evalite scorer for its artifact
 type.
 
+Its number handling is the trickiest pure logic here, so `checks.test.ts` asserts
+it directly: scale words, comma grouping, the deliberate asymmetry that lets a
+source's "310 thousand" back prose written as "310,000" while still rejecting
+"310 million", and the float drift `round` exists to absorb. The two documented
+false positives (a rounded restatement, a derived figure) are asserted as
+*accepted* — the eval only reports, so without these the parser has no gate.
+
 The `*.model.eval.ts` suites run the model, each fed a **fixed upstream fixture**
 so a layer is scored in isolation, and are what `pnpm eval:models` runs (filtered
 by the `model.eval` substring). `trialCount` is set on the structured layer evals
 because those JSON failures are intermittent — `temperature: 0` is not
 deterministic across providers, so a single trial proves nothing.
+
+`eval/models.ts` carries what all four suites share — `acrossModels()`, the
+`LAYER_BUDGET` / `E2E_BUDGET` pair, and `layerContext(input, model)` for the
+per-run pool, board and client.
 
 `scorers.eval.ts` is the free offline guard: for every layer, if a hallucinated
 fixture converges on its reference's score, that layer's scorers have stopped

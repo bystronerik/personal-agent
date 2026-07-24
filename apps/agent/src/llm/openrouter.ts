@@ -1,6 +1,5 @@
-import { OpenRouter } from '@openrouter/sdk'
-import { requireEnv } from '../utils/env'
-import { type Decoded, decodeJson, type ResponseSchema } from './decode'
+import { transportClient } from './client'
+import { decodeJson, type ResponseSchema } from './decode'
 import { toWireSchema } from './json-schema'
 
 export type ChatMessage = {
@@ -16,7 +15,7 @@ type Completion = {
   costUsd?: number
 }
 
-export type StructuredResult<T> = Completion & Decoded<T>
+export type StructuredResult<T> = Completion & { value: T }
 
 /**
  * A single schema-constrained completion. Tool-using loops go through
@@ -30,19 +29,10 @@ export type StructuredRequest<T> = {
   responseSchema: ResponseSchema<T>
 }
 
-function createClient(): OpenRouter {
-  return new OpenRouter({
-    apiKey: requireEnv(
-      'OPENROUTER_API_KEY',
-      'Copy .env.example to .env and add your key.',
-    ),
-  })
-}
-
 export async function chatCompletion<T>(
   request: StructuredRequest<T>,
 ): Promise<StructuredResult<T>> {
-  const result = await createClient().chat.send({
+  const result = await transportClient().chat.send({
     chatRequest: {
       model: request.model,
       messages: request.messages.map(({ role, content }) => ({
@@ -87,5 +77,5 @@ export async function chatCompletion<T>(
     )
   }
 
-  return { ...completion, ...decodeJson(text, request.responseSchema) }
+  return { ...completion, value: decodeJson(text, request.responseSchema) }
 }

@@ -1,5 +1,4 @@
 import type { z } from 'zod'
-import { formatIssues } from '../utils/zod'
 
 const FENCED_JSON = /^\s*```(?:json)?\s*([\s\S]*?)\s*```\s*$/
 
@@ -14,21 +13,21 @@ export type ResponseSchema<T> = {
   schema: z.ZodType<T>
 }
 
-export type Decoded<T> = {
-  value: T
-  /** True when the model ignored the "no markdown fences" instruction. */
-  wasFenced: boolean
-}
+/** Flattens Zod issues into one line, keyed by path, for error messages. */
+const formatIssues = (error: z.ZodError): string =>
+  error.issues
+    .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
+    .join('; ')
 
 const preview = (text: string): string =>
   text.length <= 300 ? text : `${text.slice(0, 300)}…`
 
+/** Tolerates a markdown-fenced response rather than failing on it. */
 export function decodeJson<T>(
   raw: string,
   { name, schema }: ResponseSchema<T>,
-): Decoded<T> {
-  const fenced = raw.match(FENCED_JSON)
-  const jsonText = fenced?.[1] ?? raw
+): T {
+  const jsonText = raw.match(FENCED_JSON)?.[1] ?? raw
 
   let value: unknown
   try {
@@ -46,5 +45,5 @@ export function decodeJson<T>(
     )
   }
 
-  return { value: parsed.data, wasFenced: fenced !== null }
+  return parsed.data
 }

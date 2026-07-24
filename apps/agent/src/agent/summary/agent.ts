@@ -20,7 +20,7 @@ export async function runSummary(ctx: AgentContext): Promise<SummaryDraft> {
   const result = await structuredComplete({
     model: ctx.model,
     messages: summaryMessages(findings, prediction),
-    schema: SUMMARY_SCHEMA,
+    responseSchema: SUMMARY_SCHEMA,
     temperature: 0,
   })
   ctx.pool.record(result.costUsd)

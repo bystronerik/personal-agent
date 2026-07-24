@@ -3,6 +3,8 @@ import { maxCost, type StopCondition, stepCountIs } from '@openrouter/agent'
 export type Budget = {
   softLimitUsd: number
   hardLimitUsd: number
+  /** Headroom held back for the finalize path; defaults to half the hard limit. */
+  reserveUsd?: number
 }
 
 /**
@@ -39,6 +41,25 @@ export const budgetStop =
   (pool: BudgetPool, budget: Budget): StopCondition =>
   () =>
     pool.spentUsd >= budget.hardLimitUsd
+
+const DEFAULT_RESERVE_FRACTION = 0.5
+
+/**
+ * The budget the orchestrator's finalize path runs under. Every loop stops on
+ * the *shared* pool, so once the hard limit is reached a nested loop is already
+ * stopped before its first turn — including the finalize research a brief
+ * cannot assemble without. Lifting the ceiling to what has been spent plus a
+ * reserve gives that path room the loop cannot have consumed, while the pool
+ * keeps one honest total for the run.
+ */
+export function finalizeBudget(pool: BudgetPool, budget: Budget): Budget {
+  const reserve =
+    budget.reserveUsd ?? budget.hardLimitUsd * DEFAULT_RESERVE_FRACTION
+  return {
+    ...budget,
+    hardLimitUsd: Math.max(budget.hardLimitUsd, pool.spentUsd + reserve),
+  }
+}
 
 /** The stop-condition set every loop shares: global pool, per-loop cost, step ceiling. */
 export const budgetStopWhen = (

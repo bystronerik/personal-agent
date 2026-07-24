@@ -1,11 +1,12 @@
-import type {
-  Brief,
-  BriefInput,
-  Edition,
-  Prediction,
-  ResearchFindings,
-  Story,
-  SummaryDraft,
+import {
+  type Brief,
+  type BriefInput,
+  type Edition,
+  MAX_HORIZON_DAYS,
+  type Prediction,
+  type ResearchFindings,
+  type Story,
+  type SummaryDraft,
 } from '../schema'
 
 export type CheckResult = {
@@ -50,7 +51,7 @@ function* matchNumbers(
 }
 
 /** One value per number, with any scale word applied — what the prose asserts. */
-function claimedValuesIn(text: string): NumericClaim[] {
+export function claimedValuesIn(text: string): NumericClaim[] {
   return [...matchNumbers(text)].map(({ raw, base, scale }) => ({
     raw,
     value: round(base * scale),
@@ -63,7 +64,7 @@ function claimedValuesIn(text: string): NumericClaim[] {
  * source side permissive and the prose side strict means a wrong scale
  * ("310 million") is still caught.
  */
-function sourceValuesIn(text: string): number[] {
+export function sourceValuesIn(text: string): number[] {
   const values: number[] = []
   for (const { base, scale } of matchNumbers(text)) {
     values.push(round(base * scale))
@@ -160,7 +161,6 @@ function scoreConditions(name: string, conditions: Condition[]): CheckResult {
   }
 }
 
-const MAX_HORIZON_DAYS = 7
 const DAY_MS = 86_400_000
 
 /** A prediction must resolve in the future and within a scoreable horizon. */

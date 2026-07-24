@@ -6,8 +6,8 @@ import {
   StoriesSchema,
 } from '../../schema'
 import { createNewsTools } from '../../tools/news'
+import { BOUNDS } from '../prompts/bounds'
 import { budgetStopWhen } from '../shared/budget'
-import { agentClient } from '../shared/client'
 import { type AgentContext, withBudgetNotice } from '../shared/run-context'
 import { RESEARCH_INSTRUCTIONS, researchTask } from './prompt'
 
@@ -23,8 +23,7 @@ const RecordInput = z.object({ stories: StoriesSchema })
 function recordFindingsTool(ctx: AgentContext) {
   return tool({
     name: 'record_findings',
-    description:
-      'Submit the final set of 3–7 stories worth the reader’s attention. Call this exactly once, when research is complete.',
+    description: `Submit the final set of ${BOUNDS.stories} stories worth the reader’s attention. Call this exactly once, when research is complete.`,
     inputSchema: RecordInput,
     execute: ({ stories }) => {
       const findings = ResearchFindingsSchema.parse({
@@ -48,7 +47,7 @@ export async function runResearch(
     recordFindingsTool(ctx),
   ]
 
-  const result = agentClient().callModel({
+  const result = ctx.client.callModel({
     model: ctx.model,
     instructions: RESEARCH_INSTRUCTIONS,
     input: researchTask(ctx.board.input, focus),
