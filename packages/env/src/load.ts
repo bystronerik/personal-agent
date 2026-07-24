@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { blankAsAbsent } from './blank'
 
 /** An environment variable's real name bound to the schema that validates it. */
-export interface EnvVar<T = unknown> {
+export type EnvVar<T = unknown> = {
   readonly name: string
   readonly schema: z.ZodType<T>
 }
@@ -19,7 +19,7 @@ type Parsed<S extends EnvSpec> = {
   [K in keyof S]: S[K] extends EnvVar<infer T> ? T : never
 }
 
-export interface LoadEnvOptions {
+export type LoadEnvOptions = {
   /** Where raw values are read from — `process.env`, or static reads in a browser. */
   readonly source: Record<string, string | undefined>
   /** Names the config in the failure message, e.g. `The API`. */

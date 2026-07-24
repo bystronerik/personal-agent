@@ -8,7 +8,7 @@ import { API_CONFIG } from '../config/config.module'
 import type { ApiConfig } from '../config/env'
 
 /** Only the claims this API acts on. Auth0 sends many more. */
-interface AccessTokenPayload {
+type AccessTokenPayload = {
   sub?: string
 }
 

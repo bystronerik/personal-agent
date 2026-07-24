@@ -62,7 +62,11 @@
         "noNamespace": "error",
         "useArrayLiterals": "error",
         "useAsConstAssertion": "error",
-        "useBlockStatements": "off"
+        "useBlockStatements": "off",
+        "useConsistentTypeDefinitions": {
+          "level": "error",
+          "options": { "style": "type" }
+        }
       },
       "suspicious": {
         "noAsyncPromiseExecutor": "error",
