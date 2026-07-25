@@ -8,7 +8,7 @@ Only what spans packages. Internals live in each workspace's own `CLAUDE.md`.
 | [`packages/env`](packages/env/CLAUDE.md) | Every env variable's name/schema/default + the shared loader |
 | [`packages/schemas`](packages/schemas/CLAUDE.md) | Zod schemas the API contract is made of |
 | [`packages/telegram`](packages/telegram/CLAUDE.md) | Bot API client for brief delivery |
-| [`apps/agent`](apps/agent/CLAUDE.md) | Standalone brief worker (cron): framework-free core + eval harness |
+| [`apps/agent`](apps/agent/CLAUDE.md) | Standalone brief worker: framework-free core + eval harness + the scheduled process |
 | [`apps/server`](apps/server/CLAUDE.md) | NestJS admin API — auth, config, topics |
 | [`apps/client`](apps/client/CLAUDE.md) | React + Mantine admin portal |
 
@@ -19,8 +19,12 @@ Only what spans packages. Internals live in each workspace's own `CLAUDE.md`.
   decides order, depth, and termination. Specialists hand off through a typed
   blackboard, not model-serialized arguments. The loop is `@openrouter/agent`'s
   `callModel`; termination (`stopWhen` over a shared USD budget) stays ours.
-- **The agent core imports no caller framework** — no NestJS, HTTP, or delivery
-  transport; only the worker's thin wiring layer imports `packages/telegram`.
+- **The agent core imports no caller framework** — no NestJS, HTTP, database, or
+  delivery transport. All of that lives in `apps/agent/src/worker/`, the one
+  directory that imports `packages/db`, `packages/telegram`, and a scheduler.
+- **The schedule is data, not code.** The worker reads cron rows from Postgres and
+  reconciles its live jobs against them on a timer, so changing when a brief
+  arrives is a row edit, not a deploy.
 - **Predictions are logged experiments, never financial advice** — machine-checkable,
   scored against reality later.
 - **The eval harness justifies prompt/agent changes** with a score, not a vibe.
@@ -30,15 +34,17 @@ Only what spans packages. Internals live in each workspace's own `CLAUDE.md`.
 ## How the packages relate
 
 ```
-apps/client ──(orval codegen from apps/server openapi.yaml)──> apps/server ──> packages/db ──> Postgres
-     └──────────────> packages/schemas <──────────────┘
-apps/agent  (top-of-graph cron worker)      packages/telegram  (delivery; wiring is future work)
+apps/client ──(orval codegen from apps/server openapi.yaml)──> apps/server ──┐
+     └──────────────> packages/schemas <──────────────┘                      ├──> packages/db ──> Postgres
+apps/agent (top-of-graph scheduled worker) ──> packages/telegram             ─┘
 ```
 
 Every workspace dependency is one-directional:
 
 - **`packages/db` is the only package that talks to Postgres** — nothing else
-  constructs a Prisma client or a connection string. One consumer: `apps/server`.
+  constructs a Prisma client or a connection string. Two consumers: `apps/server`,
+  and `apps/agent`'s worker (never its core). They share the client factory and
+  the schema, not query code.
 - **`packages/schemas` defines the API contract** — `apps/server` wraps its schemas
   in `createZodDto` and derives OpenAPI from them; `apps/client` parses the same
   objects to validate a form before it becomes a request. Depends on nothing.
@@ -50,8 +56,10 @@ Every workspace dependency is one-directional:
   `apps/server/src/generated/openapi.yaml` can feed orval codegen. No runtime import
   crosses that boundary — they share `packages/schemas` and talk over HTTP, so a
   breaking API change fails the UI typecheck rather than at runtime.
-- **`apps/agent` is top-of-graph** — nothing imports it; it will add
-  `packages/telegram` (and later `packages/db`).
+- **`apps/agent` is top-of-graph** — nothing imports it, so `typecheck` catches
+  the ESM mistakes a build would. It depends on `packages/db` and
+  `packages/telegram` from `src/worker/` only; **rows are seeded by hand until an
+  admin API owns them**, so nothing yet writes a schedule over HTTP.
 
 Nothing is compiled ahead of time; the ordering that matters is codegen. `pnpm
 generate` runs Prisma `generate` → the server's `openapi` emit → orval, and
@@ -68,9 +76,12 @@ Every command is a root script; Turbo fans it out to the workspaces that define 
 | `pnpm build` | The one compiled artifact — the client's Vite bundle. |
 | `pnpm typecheck` / `pnpm lint` | tsc, and Biome (`lint:fix` writes). |
 | `pnpm test` | Vitest (`packages/telegram`, `apps/agent`). |
+| `pnpm worker` | The scheduled brief worker. Long-running; needs Postgres. |
 
-Per-app commands (`eval`/`eval:*`, `agent`, `dev`, `telegram:*`, `db:*`) live in
-their package's `CLAUDE.md`.
+Per-app commands (`eval`/`eval:*`, `agent`, `worker --once`, `seed-schedule`,
+`dev`, `telegram:*`, `db:*`) live in their package's `CLAUDE.md`. `pnpm dev`
+deliberately does **not** start the worker — scheduling costs money, so it is its
+own command.
 
 ## Cross-cutting patterns
 

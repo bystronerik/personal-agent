@@ -3,8 +3,15 @@
 Owns the Prisma schema, the migrations, and the generated client. **The only
 package that talks to Postgres** — nothing else constructs a Prisma client or
 handles a connection string. One workspace dependency: `@personal-agent/env`
-(CLI-time, for `DATABASE_URL`); one consumer: `apps/server`. See the
-[root CLAUDE.md](../../CLAUDE.md) for the workspace-wide picture.
+(CLI-time, for `DATABASE_URL`); two consumers: `apps/server` and `apps/agent`'s
+worker. See the [root CLAUDE.md](../../CLAUDE.md) for the workspace-wide picture.
+
+Both consumers construct through `createPrismaClient` and hold the result — the
+server in `PrismaService`, the worker in a memoized `src/worker/db.ts`. **Query
+code is not shared**: the server's is user-scoped CRUD and the worker's is a
+single "which schedules are enabled" read, and a repository layer here would be
+the first query code in this package for the sake of two calls that overlap
+nowhere.
 
 ## Commands
 
@@ -57,4 +64,23 @@ consumers never reach into `src/generated/` themselves.
 `User` is **structural** — keyed by the Auth0 `sub` itself, with no generated id
 and no other columns. It exists so user-scoped tables reference something real
 instead of repeating a dangling string; it holds no profile data, and the API
-writes a row the first time it sees a `sub`.
+writes a row the first time it sees a `sub`. `pnpm seed-schedule` upserts one,
+because on a fresh database nothing has called the auth path that would.
+
+`Schedule` splits into **intent** the owner sets (`cron`, `timezone`, `edition`,
+`enabled`) and one column the worker writes (`lastRunAt`). There is deliberately
+no `nextRunAt`: croner holds the live jobs in memory, so a stored next-fire time
+would be a second source of truth that nothing reads. `lastRunAt` is not
+bookkeeping — it is what makes the worker's catch-up pass idempotent across a
+restart (see [`apps/agent`](../../apps/agent/CLAUDE.md)). `createdAt` is read by
+that same pass: a row cannot have missed an occurrence older than itself, so it
+is the floor when `lastRunAt` is still null.
+
+There is no unique constraint across `(userId, edition)` — nothing rules out two
+morning briefs at different hours — so **`pnpm seed-schedule` rewrites the row it
+finds** rather than relying on the database to reject a second one.
+
+`edition` is a plain `String`, not a Postgres enum, so `EditionSchema` in the
+agent stays the single source of truth for the two values and an enum migration is
+never needed. The cost is that the constraint lives in the reader: the worker
+parses every row and skips one it cannot use.

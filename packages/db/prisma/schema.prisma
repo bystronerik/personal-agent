@@ -10,8 +10,9 @@ datasource db {
 }
 
 model User {
-  id     String  @id
-  topics Topic[]
+  id        String     @id
+  topics    Topic[]
+  schedules Schedule[]
 
   @@map("users")
 }
@@ -26,4 +27,21 @@ model Topic {
 
   @@unique([userId, subject])
   @@map("topics")
+}
+
+model Schedule {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  cron      String
+  timezone  String
+  edition   String
+  enabled   Boolean   @default(true)
+  lastRunAt DateTime? @map("last_run_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([enabled])
+  @@map("schedules")
 }

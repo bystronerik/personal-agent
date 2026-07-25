@@ -16,6 +16,8 @@
     "eval:watch": "turbo run eval:watch",
     "generate": "turbo run generate",
     "agent": "turbo run agent",
+    "worker": "turbo run worker",
+    "seed-schedule": "turbo run seed-schedule --",
     "telegram:send-test": "turbo run telegram:send-test",
     "telegram:chat-id": "turbo run telegram:chat-id",
     "lint": "biome check",

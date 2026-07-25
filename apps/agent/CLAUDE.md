@@ -1,11 +1,15 @@
 # `@personal-agent/agent`
 
 The standalone brief worker: the framework-free agent core (schema, agents,
-tools) and its eval harness, packaged as the app that runs on cron and delivers a
-brief. See the [root CLAUDE.md](../../CLAUDE.md) for the constraints this exists
-to satisfy. Delivery is the worker's own job: a thin entry/wiring layer imports
-`packages/telegram`, which the core never touches. That wiring is not built yet —
-today the worker is exercised by the `agent` dev script and the evals.
+tools), its eval harness, and the long-running process that fires briefs on the
+schedules in Postgres and delivers them. See the
+[root CLAUDE.md](../../CLAUDE.md) for the constraints this exists to satisfy.
+
+`src/worker/` is the **only** part that touches a caller's world — Prisma,
+Telegram, croner, signals. Everything else here is reachable with no database,
+no key, and no network, which is what keeps the core testable and the
+non-negotiable ("the agent core imports no caller framework") true by structure
+rather than by discipline.
 
 ## Layout
 
@@ -26,6 +30,9 @@ src/eval/        scorers.ts adapts grading/ to evalite; models.ts is the shared
                  fan-out/budget/context; *.eval.ts are the suites
                  (*.model.eval.ts run the model)
 src/fixtures/    synthetic input + per-layer sample artifacts, as typed consts
+src/worker/      the long-running process — main.ts is wiring; runtime/ owns the
+                 process lifecycle, scheduling/ the reconcile loop, delivery/ a
+                 fired run; config.ts and db.ts sit at the top with main.ts
 src/scripts/     one-off dev CLIs (not part of any eval) + runScript
 ```
 
@@ -43,6 +50,156 @@ every call site; everywhere else consumers import the module they mean.
 | `pnpm eval:models` | `evalite run model.eval` — every `*.model.eval.ts`, across every model in `llm/models.ts`. Costs money. |
 | `pnpm eval:watch` | Evalite watch mode + UI on `localhost:3006`. |
 | `pnpm agent` | `src/scripts/agent-run.ts` — orchestrator end-to-end on the synthetic fixture, saving to `.artifacts/`. |
+| `pnpm worker` | The scheduled worker. Long-running; needs Postgres and the `TELEGRAM_*` variables. |
+| `pnpm worker --once <id>` | Fire one schedule immediately and exit — the whole delivery path without waiting for a cron hour. Run it in `apps/agent`; the root script goes through Turbo, which swallows the flag. |
+| `pnpm seed-schedule --cron "0 7 * * *"` | Write a schedule row (`--timezone`, `--edition`, `--user` optional), until the admin API owns them. Re-running **rewrites** the row for that `(user, edition)` rather than adding a second one that would bill every brief twice. |
+
+**`worker` is deliberately not called `dev`**, so root `pnpm dev` starts the API
+and the portal without also starting paid LLM scheduling.
+
+## The worker
+
+`src/worker/main.ts` is the long-running process, and past boot it is *only*
+wiring — every piece it assembles is a module with no module-level state, so each
+is drivable in a test. **croner owns the scheduling** — pattern parsing, timezone
+and DST arithmetic, firing, and error containment (`catch`) — so the only
+scheduling logic here is keeping the live job set equal to what the `schedules`
+table says. Four consequences worth knowing before changing any of it:
+
+- **There is no `nextRunAt` column, and no due-check query.** croner holds the
+  jobs in memory, so nothing outside the process can answer "when is my next
+  brief?" — a mistyped pattern that fires every minute bills real money, and
+  nothing prints its next fire to warn before the bill. The no-restart edit path
+  (a row changed in `db:studio` takes effect with no boot) is the one with no
+  warning at all, so watch reconcile output when editing a pattern.
+- **`scheduling/pass.ts` runs on a timer** (`*/30 * * * * *`, croner's six-field
+  form, armed by `scheduling/reconciler.ts`), so a row edited in `db:studio`
+  takes effect within half a minute and no restart. A row is rebuilt only when
+  its `cron|timezone|edition` fingerprint changes — **`lastRunAt` is excluded on
+  purpose**, since a run writes it and rebuilding on that would reset the
+  pattern's phase on every fire.
+- **Overlap protection is the worker's, not croner's.** `protect` sees only the
+  job it is set on, and the catch-up pass fires the same schedule from outside
+  it, so a boot catch-up could overlap the live job on an hourly pattern and bill
+  the brief twice. `scheduling/run-occurrence.ts` keeps one `running` set
+  instead, and both paths go through the single instance `main.ts` hands them.
+  It also folds in the shutdown `track`, so a new fire site cannot forget it and
+  silently discard a paid brief.
+- **A single instance is assumed.** That guard is per-process, so two replicas
+  would each fire every schedule.
+
+`scheduling/schedules.ts` parses each row and **drops a bad one with a log rather than
+throwing**: one typo must not cost every other schedule its briefs, and because
+the parse re-runs each reconcile, fixing the row is enough. It remembers what it
+last said about each row, so a broken one is reported when it breaks and when the
+problem *changes* — not every half minute, which would bury the lines that mean
+something. The `edition` column is a plain string in Postgres, so that parse is
+the only thing between a typo and a run that cannot assemble a brief.
+`scheduling/pattern-checks.ts` holds the two refinements it uses; `isTimeZone`
+exists because croner accepts an unknown `timezone` *silently* — an invalid zone
+would fire at some unintended hour instead of being rejected.
+
+### Missed runs
+
+croner does not catch up on its own, so `scheduling/catch-up.ts` compares a
+schedule's last occurrence against `lastRunAt` and fires once if the gap is
+inside `CATCHUP_GRACE_MINUTES` (45, with the predicate, in
+`scheduling/missed-run.ts`). A 07:00 brief arriving at 07:40 is worth having;
+the same brief at noon is worse than none. Its `now` is a **function**, not a
+`Date`, and read once per iteration: a brief takes minutes, so a clock hoisted
+out of the loop would measure the window from a moment already past.
+
+**That comparison is what makes catch-up idempotent**, and it is the only reason
+this is safe to leave on: a run writes `lastRunAt` *after* the occurrence it was
+for, so restarting the worker all day cannot re-fire the same occurrence. Without
+it, every restart would bill another brief. Two details keep that true:
+
+- **The floor is `lastRunAt ?? createdAt`.** A row seeded at 07:20 has never run,
+  and would otherwise count the 07:00 that passed before it existed as missed —
+  billing a brief nobody asked for on the first `pnpm worker`.
+- **`previousOccurrence` (`scheduling/occurrences.ts`) adds a second before
+  asking croner.** `previousRuns`
+  searches back from a whole second *earlier* than the moment it is given, so a
+  worker booting at 07:00:00 would read *yesterday's* 07:00, decide nothing was
+  missed, and silently skip the day's brief.
+
+Catch-up runs on **the reconcile timer, not only at boot** — a delivery that
+fails at 07:00 is retried while the brief is still worth having, which is the
+whole point of the grace window and the reason `packages/telegram` fails a long
+rate-limit fast instead of parking. Because a failed run leaves `lastRunAt`
+untouched, that would re-fire every half minute, so
+`scheduling/catch-up-ledger.ts` bounds it: `CATCHUP_ATTEMPTS` (3) tries per
+occurrence, `CATCHUP_RETRY_MINUTES` (5) apart.
+
+`markRun` — the one write in `scheduling/schedules.ts` that `delivery/run.ts`
+calls — lands **after** delivery for the mirror-image reason: a brief that was
+generated but never sent leaves `lastRunAt` untouched, so catch-up retries it.
+**A send that failed partway is the exception** — `PartialSendError` says how many
+chunks are already in the chat, and a retry would bill a second brief only to
+repeat them in different words, so that occurrence is recorded as run and the
+error raised anyway.
+
+### Shutdown
+
+`runtime/shutdown.ts` stops the jobs, awaits whatever is in flight, then
+disconnects — there is no `process.exit`, so the event loop drains on its own and
+a signal mid-brief finishes and delivers the run instead of discarding something
+already paid for. `runtime/signals.ts` installs the handlers with `once`, so a
+second signal takes the default path. Four things that look incidental are not:
+
+- **The handlers are installed before the first paid run**, boot catch-up and
+  `--once` included. `main.ts` therefore calls `listenForShutdown` *above* the
+  `--once` branch, leaving one install site in the codebase: registering per
+  branch — the obvious reading order — is exactly the window where a rolling
+  restart discards a brief already paid for.
+- **A `stopping` flag, not just `stopAll()`.** A reconcile pass awaiting Postgres
+  when the signal lands would otherwise resume against an emptied registry, read
+  every row as new, and re-arm every job the shutdown had just stopped.
+- **It is `stopping()`, a predicate, not a boolean field.** Four modules read it
+  across two folders, and a function is what leaves nothing to snapshot: a
+  destructured copy still reads the one flag. It is required on every deps type
+  that reads it and never defaulted, since `() => false` would disable the guard
+  with no compile error — the same argument as `sessionId` on `AgentContext`.
+- **The signal handler catches.** `shutdown` disconnects Postgres, which can
+  reject if the connection is already gone; unhandled, that turns a clean drain
+  into a crash exit.
+
+And the reason `worker` is the one script launched as `node --import tsx/esm`
+rather than through the `tsx` CLI: **the CLI runs the program in a child process
+and exits 143 the moment it forwards a signal**, cutting the drain off mid-brief
+and reporting a crash to the supervisor. `--import` runs it in *this* process, so
+the handlers above are the ones that decide when it stops. Measured, not
+theorised: under the CLI a handler's own `setTimeout` never fires.
+
+### The corpus seam
+
+`delivery/input.ts` is where a fired run gets its `BriefInput`, and it still returns the
+**synthetic fixture**: only `edition` and `asOf` come from the schedule. Live
+retrieval is its own change with its own eval. Nothing downstream reaches past
+this function for a corpus, so replacing it moves nothing else.
+
+`delivery/format.ts` renders a `Brief` as **plain text** — `splitMessage` packs at
+paragraph boundaries with no notion of markup, so a chunk boundary inside an
+entity would leave a tag unclosed and Telegram would reject that chunk, which is
+also why delivery sets no `parse_mode`. The prediction carries its
+not-financial-advice line in the delivered text. Two things it must not drop:
+
+- **`sourceIds`, on every headline.** The schema makes at least one mandatory and
+  search withholds article bodies precisely so the model has to cite; a rendering
+  that omits them makes an invented headline indistinguishable from a fetched one
+  in the only artifact a human reads.
+- **The day a prediction resolves.** `IsoDateTime` is a `Date.parse` refinement
+  and the `format` keyword is stripped from the wire schema, so `resolvesAt` may
+  arrive date-only. `Date.parse` puts that at UTC midnight, and projecting it into
+  a negative-offset zone would print the day *before* the model committed to — so
+  a date-only value is formatted in UTC and only a real instant gets the
+  schedule's zone.
+
+`delivery/deliver.ts` memoizes the Telegram config and `main` calls it **first**,
+so a missing token fails while someone is watching rather than at 07:00 tomorrow
+with a paid brief already generated. It is also the only module allowed to name
+grammY's `PartialSendError`: `deliveredBefore` exists so that type never travels
+up into `delivery/run.ts`.
 
 ## The agent layer
 
@@ -265,13 +422,18 @@ discriminating and every model eval on it is meaningless.
 
 ## Config
 
-`src/config.ts` is the only place this app reads the environment:
+`src/config.ts` is where the **core** reads the environment:
 `loadAgentConfig()` selects `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` from
 `@personal-agent/env` and validates both through the shared `loadEnv`, so a
 missing key and a malformed model id are reported together, keyed by their real
 variable names. It is called lazily — from the memoized client factories and from
 `resolveModel()` — so importing the agent core never requires a key, and
 `resolveModel(override)` short-circuits before the load.
+
+`src/worker/config.ts` is the worker's own, selecting `DATABASE_URL` alone — kept
+separate so importing the core still requires no database. The `TELEGRAM_*`
+variables stay in `packages/telegram`'s loader; the worker never re-declares
+them.
 
 `vite.config.ts` loads the repo-root `.env` via `envDir` — evalite does not read
 `.env` on its own, and already-set variables still take precedence. `envPrefix`

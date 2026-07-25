@@ -32,6 +32,24 @@ function createApi(config: BotConnection): Api {
 }
 
 /**
+ * A send that failed with earlier chunks already in the chat. Re-sending the
+ * whole text would show the reader those chunks twice, so the count is carried
+ * rather than lost in a plain failure.
+ */
+export class PartialSendError extends Error {
+  constructor(
+    readonly sent: number,
+    cause: unknown,
+  ) {
+    super(
+      `sent ${sent} chunk(s) before failing: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    )
+    this.name = 'PartialSendError'
+  }
+}
+
+/**
  * Sends sequentially: Telegram preserves order per chat only for requests it
  * receives in order, and a burst can trip the per-chat rate limit, which
  * autoRetry absorbs.
@@ -44,7 +62,11 @@ export async function sendMessage(
 
   const sent: Message.TextMessage[] = []
   for (const chunk of splitMessage(text)) {
-    sent.push(await api.sendMessage(config.chatId, chunk))
+    try {
+      sent.push(await api.sendMessage(config.chatId, chunk))
+    } catch (error) {
+      throw sent.length > 0 ? new PartialSendError(sent.length, error) : error
+    }
   }
   return sent
 }
