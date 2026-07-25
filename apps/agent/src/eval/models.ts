@@ -26,3 +26,42 @@ export const layerContext = (
   budget: LAYER_BUDGET,
   client: agentClient(),
 })
+
+const LAYER_WIDTH = 12
+const MODEL_WIDTH = 26
+
+/** Trials taken per layer+model, so repeated runs of one model are told apart. */
+const trials = new Map<string, number>()
+
+/**
+ * Names the model in the log, per run. Evalite reports one averaged score per
+ * *file*, and a thrown task surfaces as a stack naming the layer but never the
+ * model — so a red suite could not be read without rerunning it. Each line
+ * carries the trial number too, since `trialCount` exists precisely because
+ * these failures are intermittent.
+ *
+ * The model goes in the message rather than being left to the `stdout |` header
+ * evalite prefixes: with the suites running concurrently that header attributes
+ * to the wrong eval, and sometimes carries no model at all.
+ */
+export const reportingPerModel =
+  <TInput, TOutput>(
+    layer: string,
+    run: (input: TInput, model: string) => Promise<TOutput>,
+  ) =>
+  async (input: TInput, model: string): Promise<TOutput> => {
+    const key = `${layer}/${model}`
+    const trial = (trials.get(key) ?? 0) + 1
+    trials.set(key, trial)
+    const label = `${layer.padEnd(LAYER_WIDTH)} ${model.padEnd(MODEL_WIDTH)} #${trial}`
+
+    try {
+      const output = await run(input, model)
+      console.info(`  PASS  ${label}`)
+      return output
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      console.info(`  FAIL  ${label}  ${reason}`)
+      throw error
+    }
+  }
