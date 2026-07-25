@@ -2,9 +2,6 @@ generator client {
   provider     = "prisma-client"
   output       = "../src/generated"
   moduleFormat = "esm"
-  // Bare specifiers, resolved by the workspace's bundler resolution — the whole
-  // repo is source-consumed (swc-node / Vite / tsx), so no runtime needs the
-  // Node-style `.js` extension.
   importFileExtension = ""
 }
 
@@ -12,13 +9,20 @@ datasource db {
   provider = "postgresql"
 }
 
-/// A news subject the brief should research, typed by hand in the admin portal.
+model User {
+  id     String  @id
+  topics Topic[]
+
+  @@map("users")
+}
+
 model Topic {
   id        String   @id @default(uuid())
-  /// Auth0 `sub` of the owner. Single-user today, scoped anyway.
   userId    String   @map("user_id")
   subject   String
   createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, subject])
   @@map("topics")

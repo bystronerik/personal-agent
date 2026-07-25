@@ -7,6 +7,7 @@ import type { AuthenticatedUser } from '@personal-agent/schemas/auth'
 
 import type { ApiConfig } from '../config/config'
 import { API_CONFIG } from '../config/config.module'
+import { UsersService } from '../users/users.service'
 
 /** Only the claims this API acts on. Auth0 sends many more. */
 type AccessTokenPayload = {
@@ -18,7 +19,10 @@ const JWKS_REQUESTS_PER_MINUTE = 5
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(@Inject(API_CONFIG) config: ApiConfig) {
+  constructor(
+    @Inject(API_CONFIG) config: ApiConfig,
+    private readonly users: UsersService,
+  ) {
     const issuer = `https://${config.auth0Domain}/`
     super({
       // Auth0 signs with a rotating key pair, so the public key is fetched from
@@ -38,10 +42,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     })
   }
 
-  validate(payload: AccessTokenPayload): AuthenticatedUser {
+  async validate(payload: AccessTokenPayload): Promise<AuthenticatedUser> {
     if (!payload.sub) {
       throw new UnauthorizedException('Access token carries no subject')
     }
+    await this.users.ensure(payload.sub)
     return { userId: payload.sub }
   }
 }

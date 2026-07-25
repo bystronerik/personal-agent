@@ -54,7 +54,7 @@ online still describes 6:
 `PrismaClient` and the model types re-exported from the generated client, so
 consumers never reach into `src/generated/` themselves.
 
-`Topic` is the only model — a news subject the brief should research. It is
-scoped by `userId` (the Auth0 `sub`) with a `@@unique([userId, subject])`, single
-user or not. Triple-slash doc comments on models and fields are intentional:
-Prisma carries them into the generated types.
+`User` is **structural** — keyed by the Auth0 `sub` itself, with no generated id
+and no other columns. It exists so user-scoped tables reference something real
+instead of repeating a dangling string; it holds no profile data, and the API
+writes a row the first time it sees a `sub`.

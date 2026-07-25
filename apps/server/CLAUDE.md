@@ -74,6 +74,14 @@ only `userId`; Auth0 sends many more claims and this API acts on none of them.
 It is also the body of `GET /me`, so it lives in `@personal-agent/schemas/auth`
 rather than in the strategy — which keeps only its internal `AccessTokenPayload`.
 
+`validate` also **ensures the caller's `users` row**, through `UsersService`,
+before it returns. That happens in the auth path rather than in a handler because
+the row is the foreign key every user-scoped table references: doing it here
+guarantees it exists before any handler can write one, so there is no ordering to
+get wrong. A `sub` seen once is remembered in-process, making this one `upsert`
+per user per process rather than a query per request — a row deleted out of band
+stays uncreated until restart, which is the trade accepted for it.
+
 ## Config
 
 `config/config.ts` holds the spec; `loadApiConfig(source = process.env)` parses
