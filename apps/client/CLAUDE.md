@@ -68,10 +68,47 @@ the same request against — `TopicsPage` runs `CreateTopicSchema.safeParse` bef
 mutating, so a too-short subject never becomes a request. This is the only
 runtime import that crosses a workspace boundary here.
 
+## Routing
+
+`@tanstack/react-router` with a **code-defined** route tree (`src/router.tsx`) —
+not file-based, so there is no Vite plugin and no generated route tree to sequence
+into `pnpm generate`. The `declare module` block registering `typeof router` is
+what makes `Link to=` a typed union: a path that is not a route fails
+`pnpm typecheck` instead of 404ing at runtime. It has to stay an `interface`
+(declaration merging), which is the one `biome-ignore` in the workspace.
+
+**Topics is the index route (`/`), not `/topics`.** Auth0 returns to the origin
+carrying `?code=&state=`, and a `/` → `/topics` redirect firing before the SDK
+consumes those params would break the callback.
+
+`App.tsx` keeps the auth gate and renders `RouterProvider` only once
+authenticated, with `AuthTokenBridge` still **outside** the router — so the
+no-request-without-a-token guarantee above is unchanged. The root route's
+component is `layout/AppLayout`, so every page renders inside the shell.
+
 ## UI
 
 Mantine with `defaultColorScheme="auto"`, `AppShell` for the frame, and
 `@mantine/notifications` for mutation errors. Component styles come from Mantine
 props and PostCSS (`postcss-preset-mantine`) — there is no CSS-in-JS layer and no
-separate design system. `TopicsPage` is the one feature page; it invalidates the
-list query key after each mutation rather than mutating the cache by hand.
+separate design system. Icons are `lucide-react`, imported per icon.
+
+The frame is navbar-only: `layout/AppNavbar` fills it with three
+`AppShell.Section`s — brand, the main `NavLink` list, and a footer pairing
+`Account` with `Log out`. The signed-in email is deliberately **not** in the
+navbar; it lives on `AccountPage`, one click away. `Log out` is a `NavLink`
+(`component="button"`) rather than a `Button` so the two footer rows match.
+
+**A header exists only below `sm`**, where a collapsed navbar would have nothing
+to reopen it; `header={{ height: { base: 56, sm: 0 } }}` plus `hiddenFrom="sm"`
+leaves desktop with no header at all.
+
+`NavLink`s are wired with **`renderRoot`, not `component={Link}`** — the
+polymorphic `component` prop erases the router's typed `to`, which is the whole
+point of the typed tree. Active state compares `useLocation().pathname` exactly,
+so a future nested route would need a prefix match instead.
+
+Feature pages live in `src/pages` (`TopicsPage`, and a read-only `AccountPage`
+pairing `useGetMe` with the Auth0 profile). A page invalidates the query key it
+affects after each mutation rather than mutating the cache by hand, and both
+render a failed request through the shared `describe` (`src/lib/errors.ts`).
