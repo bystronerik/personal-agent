@@ -3,6 +3,7 @@ import {
   INSTRUMENT_LENGTH,
   MARKET_SUMMARY_LENGTH,
   MAX_HORIZON_DAYS,
+  RATIONALE_LENGTH,
   STORY_COUNT,
 } from '../../schema'
 
@@ -20,4 +21,5 @@ export const BOUNDS = {
   marketSummary: `${MARKET_SUMMARY_LENGTH.min} to ${MARKET_SUMMARY_LENGTH.max} characters`,
   instrument: `max ${INSTRUMENT_LENGTH.max} characters`,
   horizon: `${MAX_HORIZON_DAYS} days`,
+  rationale: `${RATIONALE_LENGTH.min} to ${RATIONALE_LENGTH.max} characters`,
 } as const

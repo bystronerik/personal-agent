@@ -5,7 +5,7 @@ import type { ResponseSchema } from '../../llm/decode'
 import { type SummaryDraft, SummaryDraftSchema } from '../../schema'
 import { type AgentContext, withBudgetNotice } from '../shared/run-context'
 import { structuredComplete } from '../shared/structured'
-import { summaryMessages } from './prompt'
+import { SUMMARY_INSTRUCTIONS, summaryTask } from './prompt'
 
 const SUMMARY_SCHEMA: ResponseSchema<SummaryDraft> = {
   name: 'summary',
@@ -18,15 +18,13 @@ export async function runSummary(ctx: AgentContext): Promise<SummaryDraft> {
   if (!findings) throw new Error('summary requires research findings')
   if (!prediction) throw new Error('summary requires a prediction')
 
-  const result = await structuredComplete({
-    model: ctx.model,
-    messages: summaryMessages(findings, prediction),
+  const summary = await structuredComplete(ctx, {
+    instructions: SUMMARY_INSTRUCTIONS,
+    input: summaryTask(findings, prediction),
     responseSchema: SUMMARY_SCHEMA,
-    temperature: 0,
   })
-  ctx.pool.record(result.costUsd)
-  ctx.board.summary = result.value
-  return result.value
+  ctx.board.summary = summary
+  return summary
 }
 
 export function createSummaryTool(ctx: AgentContext) {

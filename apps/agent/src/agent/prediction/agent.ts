@@ -5,7 +5,7 @@ import type { ResponseSchema } from '../../llm/decode'
 import { type Prediction, PredictionSchema } from '../../schema'
 import { type AgentContext, withBudgetNotice } from '../shared/run-context'
 import { structuredComplete } from '../shared/structured'
-import { predictionMessages } from './prompt'
+import { PREDICTION_INSTRUCTIONS, predictionTask } from './prompt'
 
 const PREDICTION_SCHEMA: ResponseSchema<Prediction> = {
   name: 'prediction',
@@ -17,15 +17,13 @@ export async function runPrediction(ctx: AgentContext): Promise<Prediction> {
   const { findings } = ctx.board
   if (!findings) throw new Error('prediction requires research findings')
 
-  const result = await structuredComplete({
-    model: ctx.model,
-    messages: predictionMessages(findings),
+  const prediction = await structuredComplete(ctx, {
+    instructions: PREDICTION_INSTRUCTIONS,
+    input: predictionTask(findings),
     responseSchema: PREDICTION_SCHEMA,
-    temperature: 0,
   })
-  ctx.pool.record(result.costUsd)
-  ctx.board.prediction = result.value
-  return result.value
+  ctx.board.prediction = prediction
+  return prediction
 }
 
 export function createPredictionTool(ctx: AgentContext) {

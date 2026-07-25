@@ -8,7 +8,7 @@ import {
 } from '../../schema'
 import { createNewsTools } from '../../tools/news'
 import { BOUNDS } from '../prompts/bounds'
-import { budgetStopWhen } from '../shared/budget'
+import { meterLoop } from '../shared/budget'
 import { type AgentContext, withBudgetNotice } from '../shared/run-context'
 import { RESEARCH_INSTRUCTIONS, researchTask } from './prompt'
 
@@ -48,19 +48,19 @@ export async function runResearch(
     recordFindingsTool(ctx),
   ]
 
+  const meter = meterLoop(ctx.pool, ctx.budget, RESEARCH_MAX_STEPS)
   const result = ctx.client.callModel({
     model: ctx.model,
     instructions: RESEARCH_INSTRUCTIONS,
     input: researchTask(ctx.board.input, focus),
     tools,
     temperature: 0,
-    stopWhen: [
-      hasToolCall('record_findings'),
-      ...budgetStopWhen(ctx.pool, ctx.budget, RESEARCH_MAX_STEPS),
-    ],
-    onTurnEnd: (_turn, response) => ctx.pool.record(response.usage?.cost),
+    stopWhen: [hasToolCall('record_findings'), ...meter.stopWhen],
+    onTurnEnd: (turn, response) =>
+      meter.recordTurn(turn.numberOfTurns, response),
   })
   await result.getText()
+  await meter.settle(result)
 
   if (!ctx.board.findings) {
     throw new Error('research finished without recording findings')

@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@openrouter/agent": "^0.7.2",
-    "@openrouter/sdk": "^0.13.65",
     "@personal-agent/env": "workspace:*",
     "zod": "^4.4.3"
   },

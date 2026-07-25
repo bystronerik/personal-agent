@@ -1,5 +1,4 @@
 import { OpenRouter as AgentSDK } from '@openrouter/agent'
-import { OpenRouter as TransportSDK } from '@openrouter/sdk'
 
 import { loadAgentConfig } from '../config'
 
@@ -12,17 +11,12 @@ const memoize = <T>(create: () => T): (() => T) => {
 }
 
 /**
- * The slice of the loop client the agents actually use. Narrow on purpose: an
+ * The slice of the client the agents actually use. Narrow on purpose: an
  * `AgentContext` carries one of these, so a test can drive a loop without a key.
  */
 export type LoopClient = Pick<AgentSDK, 'callModel'>
 
-/** `@openrouter/agent`, for the tool-using loops (research, orchestrator). */
+/** `@openrouter/agent` — every model call, tool-using loop or structured transform. */
 export const agentClient = memoize(
   (): LoopClient => new AgentSDK({ apiKey: loadAgentConfig().apiKey }),
-)
-
-/** `@openrouter/sdk`, for single structured calls — reached only via `chatCompletion`. */
-export const transportClient = memoize(
-  () => new TransportSDK({ apiKey: loadAgentConfig().apiKey }),
 )

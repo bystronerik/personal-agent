@@ -6,10 +6,11 @@ import { createResearchTool, runResearch } from '../research/agent'
 import { type Blackboard, createBlackboard } from '../shared/blackboard'
 import {
   type Budget,
-  budgetStopWhen,
   createPool,
   DEFAULT_BUDGET,
   finalizeBudget,
+  meterLoop,
+  type TurnObserver,
 } from '../shared/budget'
 import type { AgentContext } from '../shared/run-context'
 import { createSummaryTool, runSummary } from '../summary/agent'
@@ -22,8 +23,8 @@ export type RunBriefOptions = {
   budget?: Budget
   /** Defaults to the shared `@openrouter/agent` client; injectable for tests. */
   client?: LoopClient
-  /** Per orchestrator turn: turn index, that turn's cost, running total. */
-  onTurnEnd?: (turn: number, costUsd: number, totalUsd: number) => void
+  /** Per orchestrator turn, the loop's initial turn being 0. */
+  onTurnEnd?: TurnObserver
 }
 
 export type BriefRun = {
@@ -59,20 +60,24 @@ export async function runBrief(
     createSummaryTool(ctx),
   ]
 
+  const meter = meterLoop(
+    pool,
+    budget,
+    ORCHESTRATOR_MAX_STEPS,
+    options.onTurnEnd,
+  )
   const result = ctx.client.callModel({
     model,
     instructions: ORCHESTRATOR_INSTRUCTIONS,
     input: orchestratorTask(input),
     tools,
     temperature: 0,
-    stopWhen: budgetStopWhen(pool, budget, ORCHESTRATOR_MAX_STEPS),
-    onTurnEnd: (turn, response) => {
-      const cost = response.usage?.cost ?? 0
-      pool.record(cost)
-      options.onTurnEnd?.(turn.numberOfTurns, cost, pool.spentUsd)
-    },
+    stopWhen: meter.stopWhen,
+    onTurnEnd: (turn, response) =>
+      meter.recordTurn(turn.numberOfTurns, response),
   })
   await result.getText()
+  await meter.settle(result)
 
   // Guaranteed finalize: fill whatever the loop left unfinished (a budget stop
   // can halt it mid-pipeline) so a valid brief always assembles. It runs on a

@@ -14,8 +14,8 @@ src/schema/      Zod schemas, one narrow file each + barrel (source of truth),
                  including the bound constants the schemas are built from
 src/config.ts    loadAgentConfig — the OPENROUTER_* spec, validated by
                  @personal-agent/env
-src/llm/         client.ts memoizes both SDK clients;
-                 @openrouter/sdk transport for structured calls; model ids
+src/llm/         client.ts memoizes the one SDK client; the Zod↔JSON-Schema
+                 pair (json-schema.ts, decode.ts); model ids
 src/agent/       shared/ (budget, blackboard, structured, run-context)
                  + prompts/ (fragments more than one agent needs)
                  + research/ prediction/ summary/ orchestrator/ — each an agent
@@ -78,11 +78,21 @@ loop can be driven without an API key.
 ### The budget
 
 `shared/budget.ts` keeps **one USD pool per brief**. Both the orchestrator's turns
-and the nested research loop's turns fold into it via `onTurnEnd`, so the ceiling
-bounds the whole run rather than any single loop — the SDK's own `maxCost` only
-sees the current loop, which is why `budgetStop` exists alongside it.
-`budgetStopWhen` is the trio every loop shares: global pool, per-loop `maxCost`,
-`stepCountIs`.
+and the nested research loop's turns fold into it, so the ceiling bounds the whole
+run rather than any single loop — the SDK's own `maxCost` only sees the current
+loop, which is why `budgetStop` exists alongside it. `meterLoop` is what every
+loop wires: it carries the stop-condition trio (global pool, per-loop `maxCost`,
+`stepCountIs`) and meters the turns that feed the pool they read.
+
+**Metering takes three points, because none of them sees a whole loop.**
+`callModel` fires `onTurnEnd` only after a *follow-up* request, so it covers
+every turn but the loop's initial one — wiring the pool to it alone silently
+dropped one turn per loop, under-reporting every run. The initial turn does
+reach the `steps` a stop condition is handed (it is how `maxCost` sees it), but
+only once a follow-up has been made; and a loop that never iterates has no steps
+at all, so `meter.settle(result)` after the loop reads that turn off the final
+response. The metering condition is ordered ahead of `budgetStop` so the pool is
+current before the ceiling is read.
 
 Crossing the **soft** limit does not stop anything; `withBudgetNotice` attaches a
 `notice` field to the specialist tools' digests. The nudge arrives as *data in a
@@ -102,17 +112,19 @@ deliberate trade, since refusing to run would lose the brief it exists to save.
 Default budget is a cautious `{ soft: 0.15, hard: 0.30 }`; a real caller passes
 limits sized to the model and corpus.
 
-### Two clients, deliberately
+### One client
 
-Both live in `llm/client.ts`, which memoizes each and reads the key through
-`loadAgentConfig()`:
+`llm/client.ts` memoizes the single `@openrouter/agent` client and reads the key
+through `loadAgentConfig()`, narrowed to `LoopClient` on the way into
+`AgentContext`. Every model call goes through `callModel` — the tool-using loops
+and the no-tools structured transforms alike, the latter via
+`agent/shared/structured.ts`, which passes `text.format` (the Responses-API
+spelling of a `json_schema` response format) and no tools. So no agent reaches
+for a client, and all four are drivable in a test without a key.
 
-- the `@openrouter/agent` client, for the loops — narrowed to `LoopClient` on the
-  way into `AgentContext`.
-- the `@openrouter/sdk` transport, for single structured calls, reached only
-  through `agent/shared/structured.ts` so the agents never touch transport
-  directly. That seam re-exports the transport's own `StructuredRequest` rather
-  than restating it.
+**Cost is read from the response there, not from `onTurnEnd`.** The SDK fires
+`onTurnEnd` only after a *follow-up* request; a call with no tools never makes
+one, so wiring the pool to it would silently record nothing.
 
 ## Structured output
 
@@ -131,7 +143,10 @@ The consequence is that **prompt prose is the only channel that carries a bound
 to the model**, and Zod rejects a violation afterwards as a thrown decode error
 rather than a retry. So the prose is not written by hand: `schema/` exports the
 bounds as named constants (`STORY_COUNT`, `CONFIDENCE`, `MARKET_SUMMARY_LENGTH`,
-`INSTRUMENT_LENGTH`, `MAX_HORIZON_DAYS`), the schemas are built from them, and
+`INSTRUMENT_LENGTH`, `RATIONALE_LENGTH`, `MAX_HORIZON_DAYS`) — **every** bound, or
+the model is never told: `rationale` was once an inline `.max(600)` with no
+fragment and no line in the prompt, and the only sign was one model failing the
+eval on length it had no way to know about. The schemas are built from them, and
 `agent/prompts/bounds.ts` renders the fragments the prompts interpolate from the
 same constants. Widening a bound updates every prompt that states it.
 `MAX_HORIZON_DAYS` is there too even though the schema cannot enforce it —
@@ -199,8 +214,12 @@ evals because those JSON failures are intermittent — `temperature: 0` is not
 deterministic across providers, so a single trial proves nothing.
 
 `eval/models.ts` carries what all four suites share — `acrossModels()`, the
-`LAYER_BUDGET` / `E2E_BUDGET` pair, and `layerContext(input, model)` for the
-per-run pool, board and client.
+`LAYER_BUDGET` / `E2E_BUDGET` pair, `layerContext(input, model)` for the per-run
+pool, board and client, and `reportingPerModel(layer, task)`, which every suite
+wraps its task in. Evalite reports one averaged score per *file* and a failed
+task raises a stack naming the layer but not the model, so without it a red run
+says only *that* something failed — the `PASS`/`FAIL` line per model and trial is
+how you read one without rerunning it.
 
 `scorers.eval.ts` is the free offline guard: for every layer, if a hallucinated
 fixture converges on its reference's score, that layer's scorers have stopped

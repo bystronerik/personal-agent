@@ -21,12 +21,15 @@ export const CONFIDENCE = { min: 0.34, max: 0.99 } as const
  */
 export const MAX_HORIZON_DAYS = 7
 
+/** Enough to tie the call to the stories it came from, and no further. */
+export const RATIONALE_LENGTH = { min: 20, max: 600 } as const
+
 export const PredictionSchema = z.object({
   instrument: z.string().min(INSTRUMENT_LENGTH.min).max(INSTRUMENT_LENGTH.max),
   direction: DirectionSchema,
   confidence: z.number().min(CONFIDENCE.min).max(CONFIDENCE.max),
   resolvesAt: IsoDateTime,
-  rationale: z.string().min(20).max(600),
+  rationale: z.string().min(RATIONALE_LENGTH.min).max(RATIONALE_LENGTH.max),
 })
 
 export type Direction = z.infer<typeof DirectionSchema>
