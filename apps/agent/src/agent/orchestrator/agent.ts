@@ -13,6 +13,7 @@ import {
   type TurnObserver,
 } from '../shared/budget'
 import type { AgentContext } from '../shared/run-context'
+import { briefSessionId } from '../shared/session'
 import { createSummaryTool, runSummary } from '../summary/agent'
 import { ORCHESTRATOR_INSTRUCTIONS, orchestratorTask } from './prompt'
 
@@ -25,12 +26,16 @@ export type RunBriefOptions = {
   client?: LoopClient
   /** Per orchestrator turn, the loop's initial turn being 0. */
   onTurnEnd?: TurnObserver
+  /** Overrides the generated id, for a caller correlating with its own run id. */
+  sessionId?: string
 }
 
 export type BriefRun = {
   brief: Brief
   board: Blackboard
   costUsd: number
+  /** What OpenRouter filed every call of this run under. */
+  sessionId: string
 }
 
 /**
@@ -44,6 +49,7 @@ export async function runBrief(
 ): Promise<BriefRun> {
   const model = resolveModel(options.model)
   const budget = options.budget ?? DEFAULT_BUDGET
+  const sessionId = options.sessionId ?? briefSessionId(input)
   const pool = createPool()
   const board = createBlackboard(input)
   const ctx: AgentContext = {
@@ -52,6 +58,7 @@ export async function runBrief(
     pool,
     budget,
     client: options.client ?? agentClient(),
+    sessionId,
   }
 
   const tools = [
@@ -68,6 +75,7 @@ export async function runBrief(
   )
   const result = ctx.client.callModel({
     model,
+    sessionId,
     instructions: ORCHESTRATOR_INSTRUCTIONS,
     input: orchestratorTask(input),
     tools,
@@ -101,5 +109,5 @@ export async function runBrief(
     prediction,
   })
 
-  return { brief, board, costUsd: pool.spentUsd }
+  return { brief, board, costUsd: pool.spentUsd, sessionId }
 }

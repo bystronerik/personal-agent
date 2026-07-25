@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { runBrief } from '../agent/orchestrator/agent'
+import { briefSessionId } from '../agent/shared/session'
 import { syntheticNews } from '../fixtures/synthetic-news'
 import { BRIEF_CHECKS } from '../grading/checks'
 import { resolveModel } from '../llm/models'
@@ -10,13 +11,16 @@ import { runScript } from './run-script'
 
 await runScript(async () => {
   const model = resolveModel()
+  const sessionId = briefSessionId(syntheticNews)
 
   console.log(
-    `Running the brief orchestrator with ${model} (${syntheticNews.docs.length} documents available)\n`,
+    `Running the brief orchestrator with ${model} (${syntheticNews.docs.length} documents available)`,
   )
+  console.log(`Session: ${sessionId}\n`)
 
   const { brief, board, costUsd } = await runBrief(syntheticNews, {
     model,
+    sessionId,
     onTurnEnd: (turn, cost, total) =>
       console.log(
         `  turn ${turn}  $${cost.toFixed(4)}  (running total $${total.toFixed(4)})`,

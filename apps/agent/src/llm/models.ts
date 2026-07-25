@@ -5,7 +5,7 @@ import { loadAgentConfig } from '../config'
 /** Models compared by `pnpm eval:models`. Browse ids at https://openrouter.ai/models */
 export const COMPARED_MODELS = [
   DEFAULT_OPENROUTER_MODEL,
-  'minimax/minimax-m3',
+  'z-ai/glm-4.7-flash',
   'deepseek/deepseek-v4-flash',
 ]
 

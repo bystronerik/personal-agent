@@ -1,6 +1,7 @@
 import { createBlackboard } from '../agent/shared/blackboard'
 import { type Budget, createPool } from '../agent/shared/budget'
 import type { AgentContext } from '../agent/shared/run-context'
+import { evalSessionId } from '../agent/shared/session'
 import { agentClient } from '../llm/client'
 import { COMPARED_MODELS } from '../llm/models'
 import type { BriefInput } from '../schema'
@@ -19,12 +20,14 @@ export const E2E_BUDGET: Budget = { softLimitUsd: 1.5, hardLimitUsd: 3 }
 export const layerContext = (
   input: BriefInput,
   model: string,
+  sessionId: string,
 ): AgentContext => ({
   model,
   board: createBlackboard(input),
   pool: createPool(),
   budget: LAYER_BUDGET,
   client: agentClient(),
+  sessionId,
 })
 
 const LAYER_WIDTH = 12
@@ -47,16 +50,17 @@ const trials = new Map<string, number>()
 export const reportingPerModel =
   <TInput, TOutput>(
     layer: string,
-    run: (input: TInput, model: string) => Promise<TOutput>,
+    run: (input: TInput, model: string, sessionId: string) => Promise<TOutput>,
   ) =>
   async (input: TInput, model: string): Promise<TOutput> => {
     const key = `${layer}/${model}`
     const trial = (trials.get(key) ?? 0) + 1
     trials.set(key, trial)
-    const label = `${layer.padEnd(LAYER_WIDTH)} ${model.padEnd(MODEL_WIDTH)} #${trial}`
+    const sessionId = evalSessionId(layer, trial)
+    const label = `${layer.padEnd(LAYER_WIDTH)} ${model.padEnd(MODEL_WIDTH)} #${trial}  ${sessionId}`
 
     try {
-      const output = await run(input, model)
+      const output = await run(input, model, sessionId)
       console.info(`  PASS  ${label}`)
       return output
     } catch (error) {

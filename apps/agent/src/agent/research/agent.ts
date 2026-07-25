@@ -51,6 +51,7 @@ export async function runResearch(
   const meter = meterLoop(ctx.pool, ctx.budget, RESEARCH_MAX_STEPS)
   const result = ctx.client.callModel({
     model: ctx.model,
+    sessionId: ctx.sessionId,
     instructions: RESEARCH_INSTRUCTIONS,
     input: researchTask(ctx.board.input, focus),
     tools,

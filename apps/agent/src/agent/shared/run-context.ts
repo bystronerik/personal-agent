@@ -10,6 +10,8 @@ export type AgentContext = {
   budget: Budget
   /** Carried rather than reached for, so a loop can be driven without a key. */
   client: LoopClient
+  /** Sent on every `callModel` request in the run; OpenRouter groups by it. */
+  sessionId: string
 }
 
 export const FINALIZE_NOTICE =

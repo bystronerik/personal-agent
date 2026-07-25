@@ -42,6 +42,7 @@ export async function structuredComplete<T>(
 ): Promise<T> {
   const result = ctx.client.callModel({
     model: ctx.model,
+    sessionId: ctx.sessionId,
     instructions,
     input,
     temperature: 0,

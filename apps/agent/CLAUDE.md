@@ -16,7 +16,7 @@ src/config.ts    loadAgentConfig — the OPENROUTER_* spec, validated by
                  @personal-agent/env
 src/llm/         client.ts memoizes the one SDK client; the Zod↔JSON-Schema
                  pair (json-schema.ts, decode.ts); model ids
-src/agent/       shared/ (budget, blackboard, structured, run-context)
+src/agent/       shared/ (budget, blackboard, structured, run-context, session)
                  + prompts/ (fragments more than one agent needs)
                  + research/ prediction/ summary/ orchestrator/ — each an agent
                  with its own prompt
@@ -71,9 +71,9 @@ tool. Those tools return a **compact digest** (counts and titles), not the paylo
 `findings`, `prediction`, `summary`. The orchestrator model sequences the agents;
 the blackboard carries the payloads so they never travel as model-serialized tool
 arguments. `AgentContext` (`shared/run-context.ts`) bundles `{ model, board,
-pool, budget, client }` so every agent's `run` signature is uniform and each layer
-stays testable in isolation. The `client` is carried rather than reached for, so a
-loop can be driven without an API key.
+pool, budget, client, sessionId }` so every agent's `run` signature is uniform
+and each layer stays testable in isolation. The `client` is carried rather than
+reached for, so a loop can be driven without an API key.
 
 ### The budget
 
@@ -125,6 +125,41 @@ for a client, and all four are drivable in a test without a key.
 **Cost is read from the response there, not from `onTurnEnd`.** The SDK fires
 `onTurnEnd` only after a *follow-up* request; a call with no tools never makes
 one, so wiring the pool to it would silently record nothing.
+
+### Session ids
+
+Every `callModel` request carries a `sessionId` (`session_id` on the wire), so
+OpenRouter files a whole run under one id — the orchestrator's turns, the nested
+research loop's, and the two structured calls — instead of a pile of unrelated
+generations. `callModel` spreads anything that is not one of its own control
+fields into the request body, and every follow-up turn rebuilds from that same
+object, so one field per call site covers a whole loop. It rides on
+`AgentContext` as a **required** field for the same reason `client` is carried:
+two places build a context, and required is what stops a new agent path from
+quietly dropping the id. The finalize path inherits it by spreading `ctx`.
+
+`shared/session.ts` holds one recipe per kind of run — slugified parts plus a
+random suffix, capped at OpenRouter's 256 characters, truncating description
+before the suffix. The descriptive parts are there to be *read*; the suffix is
+what makes an id unique, and it is not cosmetic: `pnpm agent` replays one fixture
+with a fixed `asOf`, so without it every local run would share a session.
+
+- `briefSessionId(input)` — `brief-<edition>-<asOf>-…`, used by `runBrief`'s
+  default and by a caller that wants the id *before* the run rather than off
+  `BriefRun`. `RunBriefOptions.sessionId` overrides it, which is how the worker
+  will pass its own run id.
+- `evalSessionId(layer, trial)` — `eval-<layer>-t<trial>-…`, with **no model in
+  it**: OpenRouter files the model against every generation anyway. Its suffix is
+  twice as long to compensate, since two models on one layer and trial then differ
+  by suffix alone.
+
+**It is also a routing key.** OpenRouter pins a session's requests to one
+provider to maximise prompt cache hits, so a brief's turns — which share a long
+corpus prefix — should get cheaper, while a run can also be held on a provider
+that is not the hour's cheapest. Hence a fresh id per eval layer, model and trial
+rather than one shared across them: the runs being compared stay independent.
+Provider choice affects strict-JSON behaviour, so a structured layer whose score
+moves without a prompt change is worth suspecting pinning for.
 
 ## Structured output
 
@@ -214,12 +249,15 @@ evals because those JSON failures are intermittent — `temperature: 0` is not
 deterministic across providers, so a single trial proves nothing.
 
 `eval/models.ts` carries what all four suites share — `acrossModels()`, the
-`LAYER_BUDGET` / `E2E_BUDGET` pair, `layerContext(input, model)` for the per-run
-pool, board and client, and `reportingPerModel(layer, task)`, which every suite
-wraps its task in. Evalite reports one averaged score per *file* and a failed
-task raises a stack naming the layer but not the model, so without it a red run
-says only *that* something failed — the `PASS`/`FAIL` line per model and trial is
-how you read one without rerunning it.
+`LAYER_BUDGET` / `E2E_BUDGET` pair, `layerContext(input, model, sessionId)` for
+the per-run pool, board and client, and `reportingPerModel(layer, task)`, which
+every suite wraps its task in. Evalite reports one averaged score per *file* and a
+failed task raises a stack naming the layer but not the model, so without it a red
+run says only *that* something failed — the `PASS`/`FAIL` line per model and trial
+is how you read one without rerunning it. It also mints the run's session id and
+prints it on that line — since the id names no model, that line is the only place
+the two are written together, and so the only way back from an OpenRouter session
+to the result it produced.
 
 `scorers.eval.ts` is the free offline guard: for every layer, if a hallucinated
 fixture converges on its reference's score, that layer's scorers have stopped

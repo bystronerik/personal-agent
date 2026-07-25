@@ -12,8 +12,8 @@ const LAYER = 'summary'
 /** Fed fixed findings + prediction so the score reflects the summary step alone. */
 evalite.each(acrossModels())(LAYER, {
   data: [{ input: syntheticNews }],
-  task: reportingPerModel(LAYER, (briefInput, model) => {
-    const ctx = layerContext(briefInput, model)
+  task: reportingPerModel(LAYER, (briefInput, model, sessionId) => {
+    const ctx = layerContext(briefInput, model, sessionId)
     ctx.board.findings = referenceFindings
     ctx.board.prediction = referencePrediction
     return runSummary(ctx)

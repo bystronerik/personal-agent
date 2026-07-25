@@ -9,8 +9,8 @@ const LAYER = 'research'
 
 evalite.each(acrossModels())(LAYER, {
   data: [{ input: syntheticNews }],
-  task: reportingPerModel(LAYER, (briefInput, model) =>
-    runResearch(layerContext(briefInput, model)),
+  task: reportingPerModel(LAYER, (briefInput, model, sessionId) =>
+    runResearch(layerContext(briefInput, model, sessionId)),
   ),
   scorers: RESEARCH_SCORERS,
 })

@@ -10,8 +10,12 @@ const LAYER = 'orchestrator'
 /** End to end: the orchestrator drives research → predict → summarize itself. */
 evalite.each(acrossModels())(LAYER, {
   data: [{ input: syntheticNews }],
-  task: reportingPerModel(LAYER, async (briefInput, model) => {
-    const { brief } = await runBrief(briefInput, { model, budget: E2E_BUDGET })
+  task: reportingPerModel(LAYER, async (briefInput, model, sessionId) => {
+    const { brief } = await runBrief(briefInput, {
+      model,
+      budget: E2E_BUDGET,
+      sessionId,
+    })
     return brief
   }),
   scorers: BRIEF_SCORERS,
