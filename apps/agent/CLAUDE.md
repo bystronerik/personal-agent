@@ -3,11 +3,9 @@
 The standalone brief worker: the framework-free agent core (schema, agents,
 tools) and its eval harness, packaged as the app that runs on cron and delivers a
 brief. See the [root CLAUDE.md](../../CLAUDE.md) for the constraints this exists
-to satisfy — in particular that **the model drives control flow** and that the
-**agent core imports no caller framework** (no NestJS, no HTTP server, no delivery
-transport). Delivery is the worker's own job: a thin entry/wiring layer imports
+to satisfy. Delivery is the worker's own job: a thin entry/wiring layer imports
 `packages/telegram`, which the core never touches. That wiring is not built yet —
-today the worker is exercised end-to-end by the `agent` dev script and the evals.
+today the worker is exercised by the `agent` dev script and the evals.
 
 ## Layout
 
@@ -29,11 +27,10 @@ src/fixtures/    synthetic input + per-layer sample artifacts, as typed consts
 src/scripts/     one-off dev CLIs (not part of any eval) + runScript
 ```
 
-The worker has **no build** — it runs through `tsx`, and nothing imports it as a
-library (it is top-of-graph, not a dependency), so `typecheck` already catches the
-ESM mistakes a build would. The one barrel is `schema/index.ts`, where a single
-import surface beats naming eight files at every call site; everywhere else
-consumers import the module they mean.
+Nothing imports the worker — it is top-of-graph, not a dependency — so
+`typecheck` already catches the ESM mistakes a build would. The one barrel is
+`schema/index.ts`, where a single import surface beats naming eight files at
+every call site; everywhere else consumers import the module they mean.
 
 ## Commands
 
@@ -70,11 +67,11 @@ tool. Those tools return a **compact digest** (counts and titles), not the paylo
 
 `shared/blackboard.ts` is the typed hand-off store: `input` plus optional
 `findings`, `prediction`, `summary`. The orchestrator model sequences the agents;
-the blackboard carries the actual payloads so they never travel as
-model-serialized tool arguments. `AgentContext` (`shared/run-context.ts`) bundles
-`{ model, board, pool, budget, client }` so every agent's `run` signature is
-uniform and each layer stays testable in isolation. The `client` is carried
-rather than reached for, so a loop can be driven without an API key.
+the blackboard carries the payloads so they never travel as model-serialized tool
+arguments. `AgentContext` (`shared/run-context.ts`) bundles `{ model, board,
+pool, budget, client }` so every agent's `run` signature is uniform and each layer
+stays testable in isolation. The `client` is carried rather than reached for, so a
+loop can be driven without an API key.
 
 ### The budget
 
@@ -95,11 +92,10 @@ closes over the shared pool, the condition that halted the orchestrator is
 *already true* for every nested loop — so on the run's own budget the finalize
 research would be stopped before its first turn and `runResearch` would throw.
 `finalizeBudget` lifts the ceiling to `spent + reserveUsd` (default: half the
-hard limit), giving that path room the loop cannot have consumed while the pool
-keeps one honest total. `shared/budget.test.ts` asserts both halves. Note that
-`runPrediction` and `runSummary` are single calls with no stop condition at all,
-so the finalize can overshoot the reserve — a deliberate trade, since refusing to
-run would lose the brief the finalize exists to save.
+hard limit), giving that path room while the pool keeps one honest total;
+`shared/budget.test.ts` asserts both halves. `runPrediction` and `runSummary`
+have no stop condition at all, so the finalize can overshoot the reserve — a
+deliberate trade, since refusing to run would lose the brief it exists to save.
 
 Default budget is a cautious `{ soft: 0.15, hard: 0.30 }`; a real caller passes
 limits sized to the model and corpus.
@@ -124,9 +120,9 @@ one Zod schema driving both directions.
 `json-schema.ts` converts Zod via `z.toJSONSchema` and **strips bound keywords**
 (`minLength`, `maxItems`, `format`, `minimum`, …) because strict mode rejects
 them: the wire schema guarantees *shape* (fields, types, enums, valid JSON) and
-Zod still guarantees *bounds* after parsing. This is not cosmetic — when it was
-measured, stripping took one model from consistently-invalid JSON to consistently
-valid, while another was unaffected either way.
+Zod still guarantees *bounds* after parsing. Not cosmetic — measured, stripping
+took one model from consistently-invalid JSON to consistently valid, and left
+another unaffected.
 
 The consequence is that **prompt prose is the only channel that carries a bound
 to the model**, and Zod rejects a violation afterwards as a thrown decode error
@@ -143,7 +139,8 @@ same constants. Widening a bound updates every prompt that states it.
 schema mismatches with the offending path.
 
 `models.ts` holds `DEFAULT_MODEL`, `COMPARED_MODELS` (whose first entry is the
-default), and `resolveModel(override?)` — the single override-then-`OPENROUTER_MODEL`-then-default rule.
+default), and `resolveModel(override?)` — the single
+override-then-`OPENROUTER_MODEL`-then-default rule.
 
 ## Tools
 
@@ -162,16 +159,14 @@ runtime. Each parses itself with its own Zod schema at module load and carries a
 value fails on import rather than mid-eval.
 
 The payoff is comments: `brief-hallucinated.ts` annotates each deliberate defect
-with the check in `grading/checks.ts` it trips, which the old `_note` blob could
-only list in aggregate. Comments also cannot leak into a prompt the way a stray
-data field can.
+with the check in `grading/checks.ts` it trips, and a comment cannot leak into a
+prompt the way a stray data field can. The per-layer fixtures (`findings-*`,
+`prediction-*`, `summary-*`) are **derived** from the two `brief-*` fixtures
+rather than re-authored, so each defect stays annotated in exactly one place.
 
 This applies to *hand-authored* fixtures only. Recorded tool-call responses do
 not exist yet; when they arrive they stay JSON with a loader, since a machine
-writes them and nobody hand-edits them. The per-layer fixtures (`findings-*`,
-`prediction-*`, `summary-*`) are **derived** from the two `brief-*` fixtures
-rather than re-authored, so each deliberate defect stays annotated in exactly one
-place.
+writes them and nobody hand-edits them.
 
 Fixtures are synthetic. Never fabricate real-looking reporting attributed to real
 organizations.
@@ -195,9 +190,8 @@ false positives (a rounded restatement, a derived figure) are asserted as
 *accepted* — the eval only reports, so without these the parser has no gate.
 
 The `*.model.eval.ts` suites run the model, each fed a **fixed upstream fixture**
-so a layer is scored in isolation, and are what `pnpm eval:models` runs (filtered
-by the `model.eval` substring). `trialCount` is set on the structured layer evals
-because those JSON failures are intermittent — `temperature: 0` is not
+so a layer is scored in isolation. `trialCount` is set on the structured layer
+evals because those JSON failures are intermittent — `temperature: 0` is not
 deterministic across providers, so a single trial proves nothing.
 
 `eval/models.ts` carries what all four suites share — `acrossModels()`, the
@@ -212,9 +206,9 @@ discriminating and every model eval on it is meaningless.
 
 `vite.config.ts` loads the repo-root `.env` via `envDir` — evalite does not read
 `.env` on its own, and already-set variables still take precedence. `envPrefix`
-must be set to `OPENROUTER_` because Vite only copies matching keys and defaults
-to `VITE_`. That list also governs what a Vite *client* build would inline, so it
-must stay Node-only secrets and this package must stay unbundled for the browser.
+must be set to `OPENROUTER_` because Vite defaults to `VITE_`. That list also
+governs what a Vite *client* build would inline, so it must stay Node-only
+secrets and this package must stay unbundled for the browser.
 
 `evalite.config.ts` carries only the timeout, generous because `eval:models` fans
 out across providers.

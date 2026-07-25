@@ -2,16 +2,8 @@
 
 The Zod schemas the API contract is made of, shared by `apps/server` (which wraps
 them in `createZodDto`) and `apps/client` (which validates against them directly).
-**This package is declarative only** — no transport, no framework, no runtime
-behaviour beyond parsing. See the [root CLAUDE.md](../../CLAUDE.md) for the
-workspace-wide picture.
-
-## Module resolution
-
-Uses the workspace default — `bundler` resolution, **no import extension, no
-build**. `exports` points straight at the TypeScript `src`, which every consumer
-compiles just-in-time: `apps/server` via swc-node, `apps/client` via Vite. `tsc`
-here only typechecks.
+**Declarative only** — no transport, no framework, no runtime behaviour beyond
+parsing. See the [root CLAUDE.md](../../CLAUDE.md) for the workspace-wide picture.
 
 ## zod is a peer dependency
 
@@ -23,9 +15,9 @@ makes pnpm hoist the one copy all three packages share.
 
 ## Conventions
 
-- Every schema carries **`.meta({ id: 'Name' })`**, and its type is derived
-  beside it with `z.infer`. The id names the schema wherever it is referenced
-  from another one — see the naming caveat in
+- Every schema carries **`.meta({ id: 'Name' })`**, and its type is derived beside
+  it with `z.infer`. The id names the schema wherever another one references it,
+  and downstream in the generated client (root file) — see the rename caveat in
   [apps/server/CLAUDE.md](../../apps/server/CLAUDE.md).
 - One schema per file, grouped by domain, re-exported through the folder's
   `index.ts` and reachable as a subpath (`@personal-agent/schemas/topics`).

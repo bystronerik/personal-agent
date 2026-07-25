@@ -17,20 +17,15 @@ so the portal validates against the same Zod objects the API does. See the
 ## The generated API client
 
 The portal consumes the API **only** through orval-generated TanStack Query
-hooks, so a breaking API change surfaces as a typecheck failure in the UI rather
-than at runtime. `src/api/generated/` is regenerated output — never hand-edit it,
-and never hand-write a fetch call alongside it. Hook names come from the API's
-`operationId`s (`useListTopics`, `useCreateTopic`, `useDeleteTopic`, plus
-`getListTopicsQueryKey` for invalidation).
+hooks. `src/api/generated/` is regenerated output — never hand-edit it, and never
+hand-write a fetch call alongside it. Names come from the API (see the root
+file): `useListTopics`, `useCreateTopic`, `useDeleteTopic`, plus
+`getListTopicsQueryKey` for invalidation. Output is split by OpenAPI tag —
+`generated/topics/topics.ts`, `generated/me/me.ts` — with every schema under
+`generated/model/`.
 
-Output is **split by OpenAPI tag** — `generated/topics/topics.ts`,
-`generated/me/me.ts` — with every schema under `generated/model/`. An API
-controller that gains a tag moves its hooks to a new folder.
-
-The input is `../server/src/generated/openapi.yaml`, which is **gitignored and
-rebuilt**, so a fresh clone must build `apps/server` before codegen can run; root
-`pnpm generate` does both in order. If a hook is missing after an API change,
-regenerate from the root rather than running `orval` here.
+The input is `../server/src/generated/openapi.yaml`. If a hook is missing after
+an API change, regenerate from the root rather than running `orval` here.
 
 The mutator (`src/api/api-fetcher.ts`) must return orval's
 **`{ data, status, headers }` envelope** — that is orval's contract for its fetch
@@ -58,22 +53,20 @@ validation failure surfaces immediately instead of after backoff.
 
 ## Env
 
-`vite.config.ts` sets `envDir: '../..'` to load the repo-root `.env`. Only
-`VITE_`-prefixed keys are copied, and **Vite inlines them into the browser
-bundle** — so nothing secret may carry that prefix. The Auth0 SPA client uses
-PKCE and has no secret to leak; keep it that way.
+`vite.config.ts` sets `envDir: '../..'` to load the repo-root `.env`; only
+`VITE_`-prefixed keys are copied, and Vite inlines them into the bundle. The
+Auth0 SPA client uses PKCE and has no secret to leak; keep it that way.
 
-`src/env.ts` validates the four `VITE_*` variables with Zod at module load and
-throws one message listing every problem, so a misconfigured portal fails loudly
-at startup rather than as a confusing redirect loop.
+`src/env.ts` validates the four `VITE_*` variables at module load and throws one
+message listing every problem, so a misconfigured portal fails loudly at startup
+rather than as a confusing redirect loop.
 
 ## Validation
 
 Forms parse with the schema from `@personal-agent/schemas` that the API validates
 the same request against — `TopicsPage` runs `CreateTopicSchema.safeParse` before
 mutating, so a too-short subject never becomes a request. This is the only
-runtime import that crosses a workspace boundary here; everything else about
-`apps/server` is reached over HTTP.
+runtime import that crosses a workspace boundary here.
 
 ## UI
 

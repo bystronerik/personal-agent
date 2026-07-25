@@ -1,9 +1,6 @@
 # Personal Agent — Morning/Evening Brief
 
-This root file carries only what spans packages: the constraints, how the
-packages relate, cross-cutting patterns, and shared conventions. Package
-internals live in each workspace's own `CLAUDE.md`; keep this file limited to
-what more than one package needs.
+Only what spans packages. Internals live in each workspace's own `CLAUDE.md`.
 
 | Package | What it is |
 | --- | --- |
@@ -22,15 +19,13 @@ what more than one package needs.
   decides order, depth, and termination. Specialists hand off through a typed
   blackboard, not model-serialized arguments. The loop is `@openrouter/agent`'s
   `callModel`; termination (`stopWhen` over a shared USD budget) stays ours.
-- **The agent core imports no caller framework.** Inside `apps/agent`, the core
-  stays free of NestJS, HTTP, and the delivery transport; only the worker's thin
-  wiring layer imports `packages/telegram`. Direction is `apps/agent → packages/*`,
-  never the reverse.
-- **Predictions are logged experiments, never financial advice** — each is
-  machine-checkable and scored against reality later.
+- **The agent core imports no caller framework** — no NestJS, HTTP, or delivery
+  transport; only the worker's thin wiring layer imports `packages/telegram`.
+- **Predictions are logged experiments, never financial advice** — machine-checkable,
+  scored against reality later.
 - **The eval harness justifies prompt/agent changes** with a score, not a vibe.
-  (`pnpm eval` currently reports without asserting — the failing gate is deferred
-  until live tool calls make regressions likelier.)
+  (`pnpm eval` reports without asserting; the failing gate is deferred until live
+  tool calls make regressions likelier.)
 
 ## How the packages relate
 
@@ -43,31 +38,25 @@ apps/agent  (top-of-graph cron worker)      packages/telegram  (delivery; wiring
 Every workspace dependency is one-directional:
 
 - **`packages/db` is the only package that talks to Postgres** — nothing else
-  constructs a Prisma client or a connection string. Its one consumer is `apps/server`.
-- **`packages/schemas` is where the API contract is defined.** `apps/server` wraps
-  its schemas in `createZodDto` and derives OpenAPI from them; `apps/client` parses
-  the same objects to validate a form before it becomes a request. It depends on nothing.
-- **`packages/env` is the single home for environment loading** — the `blankAsAbsent`
-  rule, the `loadEnv` validator, and every variable's name/schema/default. All five
-  consumers depend on it (`apps/server`, `packages/db`, `packages/telegram`,
-  `apps/agent`, and `apps/client`); it depends on nothing but `zod`. The browser
-  reaches it **only** through the `@personal-agent/env/client` subpath, which
-  re-exports the loader plus the `VITE_*` variables and never imports the server
-  registry — so a server variable cannot land in the client bundle even by mistake.
-- **`apps/client` depends on `apps/server` as a devDependency only**, purely so
+  constructs a Prisma client or a connection string. One consumer: `apps/server`.
+- **`packages/schemas` defines the API contract** — `apps/server` wraps its schemas
+  in `createZodDto` and derives OpenAPI from them; `apps/client` parses the same
+  objects to validate a form before it becomes a request. Depends on nothing.
+- **`packages/env` is the single home for environment loading.** All five other
+  workspaces depend on it; it depends on nothing but `zod`. The browser reaches it
+  **only** through the `@personal-agent/env/client` subpath, which never imports the
+  server registry — so a server variable cannot land in the client bundle.
+- **`apps/client` depends on `apps/server` as a devDependency only**, so
   `apps/server/src/generated/openapi.yaml` can feed orval codegen. No runtime import
   crosses that boundary — they share `packages/schemas` and talk over HTTP, so a
-  breaking API change surfaces as a UI typecheck failure rather than at runtime.
-- **`apps/agent` is top-of-graph:** nothing imports it; it already depends on
-  `packages/env`, and will depend on `packages/telegram` (and later `packages/db`).
-  Delivery wiring is future work.
+  breaking API change fails the UI typecheck rather than at runtime.
+- **`apps/agent` is top-of-graph** — nothing imports it; it will add
+  `packages/telegram` (and later `packages/db`).
 
 Nothing is compiled ahead of time; the ordering that matters is codegen. `pnpm
-generate` runs Prisma `generate` (`packages/db`) → the server's `openapi` emit
-(`apps/server`, via swc-node) → orval for `apps/client`, and
+generate` runs Prisma `generate` → the server's `openapi` emit → orval, and
 `typecheck`/`build`/`dev` all depend on it, so generated code is never stale.
-**Nothing generated is committed** — the Prisma client, OpenAPI document, and
-portal's typed client are all regenerated.
+**Nothing generated is committed.**
 
 ## Commands
 
@@ -76,7 +65,7 @@ Every command is a root script; Turbo fans it out to the workspaces that define 
 | Command | Effect |
 | --- | --- |
 | `pnpm generate` | Prisma client, OpenAPI document, portal's typed client. |
-| `pnpm build` | The one compiled artifact — the client's Vite bundle. Internal packages have no build. |
+| `pnpm build` | The one compiled artifact — the client's Vite bundle. |
 | `pnpm typecheck` / `pnpm lint` | tsc, and Biome (`lint:fix` writes). |
 | `pnpm test` | Vitest (`packages/telegram`, `apps/agent`). |
 
@@ -86,31 +75,32 @@ their package's `CLAUDE.md`.
 ## Cross-cutting patterns
 
 - **One `.env` at the repo root** (gitignored; see `.env.example`), never one per
-  package — each package loads it explicitly, and the mechanism differs by runtime
-  (`tsx --env-file-if-exists` for CLIs, `envDir: '../..'` for Vite, a pathed
-  `dotenv` for `apps/server` and `packages/db`). A new variable must also be
-  declared in `turbo.json`, or a cached task is reused across a changed value.
-- **Env is Zod-validated at the boundary, and a blank is absent.** Every variable's
-  name, schema, and default is declared once in `packages/env`; each consumer selects
-  the fields it needs and validates them through the shared `loadEnv`, which reports
-  all problems at once keyed by the real variable name. `.env` carries empty
-  placeholders (`API_PORT=`), so `blankAsAbsent` (also there, the single copy) lets a
-  blank reach `.default()` as `undefined` rather than a valid empty string. `apps/agent`
-  reads its two optional scalars with a thin `readEnv` that routes through the same
-  `blankAsAbsent`.
-- **One module system, no build step for internal code.** Every package is ESM
-  (`"type": "module"`) and resolved with `moduleResolution: bundler`
-  (`tsconfig.base.json`), so **relative imports carry no extension, anywhere.**
-  Internal packages export their TypeScript `src` directly (`"exports"` points at
-  `.ts`, there is no `dist`); each consumer compiles it just-in-time — Vite for
+  package — each loads it explicitly, by runtime: `tsx --env-file-if-exists` for
+  CLIs, `envDir: '../..'` for Vite, a pathed `dotenv` for `apps/server` and
+  `packages/db`. A new variable must also be declared in `turbo.json`, or a cached
+  task is reused across a changed value.
+- **Env is Zod-validated at the boundary, and a blank is absent.** Every variable is
+  declared once in `packages/env`; consumers select the fields they need and validate
+  through the shared `loadEnv`, which reports all problems at once keyed by the real
+  variable name. `.env` carries empty placeholders (`API_PORT=`), so `blankAsAbsent`
+  lets a blank reach `.default()` as `undefined`. **Vite inlines every prefixed key
+  it copies into the bundle it builds, so nothing secret may carry such a prefix.**
+- **One module system, no build step for internal code.** Every package is ESM with
+  `moduleResolution: bundler` (`tsconfig.base.json`), so **relative imports carry no
+  extension, anywhere.** Internal packages export their TypeScript `src` (`"exports"`
+  points at `.ts`, no `dist`); consumers compile just-in-time — Vite for
   `apps/client`, `tsx` for the agent/telegram CLIs, `@swc-node/register` for
-  `apps/server`. `tsc` only ever typechecks (`--noEmit`). The Prisma generator is set
-  `importFileExtension = ""` for the same reason. The one compiled artifact in the
-  repo is the client's `vite build` bundle.
+  `apps/server`. `tsc` only typechecks (`--noEmit`). The one compiled artifact is the
+  client's `vite build` bundle.
 - **Zod schemas are the source of truth**; types are derived with `z.infer`, never
   hand-written. The same schema reaches the wire both ways — `apps/server` derives
-  OpenAPI (nestjs-zod), `apps/agent` derives its `response_format` JSON Schema
+  OpenAPI (nestjs-zod), `apps/agent` its `response_format` JSON Schema
   (`toJSONSchema`) — which is why the contract lives in `packages/schemas`.
+- **The OpenAPI document is `apps/client`'s codegen contract, and names in it are
+  load-bearing.** A schema's `.meta({ id })` names the component and so the
+  generated model file; a route's `operationId` names the generated hook;
+  `@ApiTags` names the folder it lands in. Renaming any of the three renames
+  something in `apps/client`.
 
 ## Conventions
 
@@ -123,6 +113,5 @@ their package's `CLAUDE.md`.
 
 ## Working agreement
 
-- Project notes live in these `CLAUDE.md` files — never in Claude's memory
-  directory.
+- Project notes live in these `CLAUDE.md` files — never in Claude's memory directory.
 - **Ask before making changes.**

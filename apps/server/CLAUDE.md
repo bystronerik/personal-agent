@@ -11,34 +11,32 @@ workspace-wide picture.
 | Command | Effect |
 | --- | --- |
 | `pnpm dev` (root) | `node --watch` on `src/main.ts` via swc-node, `:3000`; Swagger UI at `/docs`, document at `/openapi.json`. |
-| `start` | `node --import @swc-node/register/esm-register src/main.ts`. No build — the server runs its TypeScript directly. |
+| `start` | `node --import @swc-node/register/esm-register src/main.ts`. |
 | `openapi` | Rewrites `src/generated/openapi.yaml` (swc-node). Runs as part of root `pnpm generate`. |
 
 ## Runtime and decorators
 
-The server runs its TypeScript **unbuilt**, through **`@swc-node/register`** — not
-`tsc`+`node dist`, and not `tsx`. Nest's DI resolves constructor dependencies by
-reading their parameter **types** at runtime (`emitDecoratorMetadata`), and
-`tsx`/esbuild don't emit that metadata; SWC does. There is no `dist/` and no build
-step.
+The server runs its TypeScript through **`@swc-node/register`** — not `tsc`+`node
+dist`, and not `tsx`. Nest's DI resolves constructor dependencies by reading their
+parameter **types** at runtime (`emitDecoratorMetadata`), and `tsx`/esbuild don't
+emit that metadata; SWC does.
 
 Because of that runtime choice, three compiler settings are load-bearing:
 
-- `module: esnext` — overrides the base `preserve` so swc-node emits ESM (SWC has no
-  `preserve` mode); paired with `moduleResolution: bundler`, imports stay
+- `module: esnext` — overrides the base `preserve` so swc-node emits ESM (SWC has
+  no `preserve` mode); paired with `moduleResolution: bundler`, imports stay
   extensionless. Top-level `await` in `main.ts` depends on the ESM output.
-- `emitDecoratorMetadata` — Nest reads constructor parameter types at runtime; swc-node
-  honours this tsconfig flag.
+- `emitDecoratorMetadata` — Nest reads constructor parameter types at runtime;
+  swc-node honours this tsconfig flag.
 - `useDefineForClassFields: false` — `define` semantics would overwrite injected
   properties with `undefined`.
 
 ## nestjs-zod
 
 A request schema **is** a Zod schema, and the OpenAPI document is derived from it
-— no class-validator DTOs duplicating types Zod already owns. The schemas
-themselves live in `@personal-agent/schemas`, so `apps/client` validates against
-the same objects; a `*.dto.ts` file here holds nothing but `createZodDto`
-wrappers. `ZodValidationPipe`, `ZodSerializerInterceptor` and
+— no class-validator DTOs duplicating types Zod already owns. The schemas live in
+`@personal-agent/schemas`, so a `*.dto.ts` file here holds nothing but
+`createZodDto` wrappers. `ZodValidationPipe`, `ZodSerializerInterceptor` and
 `HttpExceptionFilter` are registered globally in `app.module.ts`.
 
 Notes on the v5 API, since older material describes v4:
@@ -51,10 +49,9 @@ Notes on the v5 API, since older material describes v4:
   records the class at runtime, and a type-only import erases it, leaving the
   validation pipe nothing to parse with. **The failure is silent** — the route
   simply stops validating.
-- `@ApiOperation({ operationId })` is set on every route because orval derives
-  the generated hook names from it; changing one renames a hook in `apps/client`.
-  `@ApiTags` is set on every controller because orval splits the generated
-  client by tag — an untagged route lands in a `default` folder.
+- `@ApiOperation({ operationId })` and `@ApiTags` are set on every route and
+  controller because orval derives its hook names and folder split from them (see
+  the root file); an untagged route lands in a `default` folder.
 - **`cleanupOpenApiDoc` stopped honouring `.meta({ id })` at zod 4.4.** Its
   rename keys off an `id` that zod 4.3 emitted at the root of its JSON Schema and
   4.4 no longer does, so a component would take its **DTO class name** instead —
@@ -75,19 +72,18 @@ a configured key, because Auth0 rotates its key pair. Caching (10 min) and rate
 limiting are on because this runs on every request. `AuthenticatedUser` carries
 only `userId`; Auth0 sends many more claims and this API acts on none of them.
 It is also the body of `GET /me`, so it lives in `@personal-agent/schemas/auth`
-rather than in the strategy — the strategy keeps only its internal
-`AccessTokenPayload`.
+rather than in the strategy — which keeps only its internal `AccessTokenPayload`.
 
 ## Config
 
-`loadApiConfig()` parses the environment through a Zod schema and reports every
-problem at once, keyed by the real variable name. Domain and audience are
-regex/shape-checked so the common mistakes — pasting a URL as the domain, or the
-API URL as the audience — fail at boot with an explanation rather than as 401s.
+`loadApiConfig()` parses the environment through the shared loader. Domain and
+audience are regex/shape-checked so the common mistakes — pasting a URL as the
+domain, or the API URL as the audience — fail at boot with an explanation rather
+than as 401s.
 
 `env-file.ts` is a side-effect module imported **first** by `main.ts`: it loads
-the repo-root `.env`, three levels up from this file either compiled or as
-source, because `dotenv/config` would only look in the working directory.
+the repo-root `.env`, three levels up from this file, because `dotenv/config`
+would only look in the working directory.
 
 ## Prisma
 
@@ -103,7 +99,9 @@ on exactly that.
 `ApiError` — `{ statusCode, message, timestamp, path }` plus an optional
 `errorCode`, `params`, and `errors`. That shape is documented on the routes that
 can produce it (`@ApiNotFoundResponse({ type: ApiErrorDto })` and friends), which
-is what gives `apps/client` a typed error instead of `unknown`.
+is what gives `apps/client` a typed error instead of `unknown` — and what widens
+orval's response union, so the portal narrows on `status` to reach the success
+case.
 
 Two things the filter does deliberately:
 
@@ -119,16 +117,10 @@ A route signals *why* it failed by throwing a body rather than a string:
 params })`. Anything not in `ErrorCode` is dropped by the filter's parse, so a new
 reason is added to the schemas package first.
 
-Documenting an error response widens orval's generated response union, so
-`apps/client` narrows on `status` to reach the success case.
-
 ## The generated `openapi.yaml`
 
-`src/generated/openapi.yaml` is the codegen input for `apps/client`. It is
-**gitignored and regenerated**, so nothing consumes it before the `openapi` emit
-has run here — the Turbo graph (`^generate` → `openapi` → `generate`, i.e. Prisma
-generate → this emit → orval) is what enforces that on a fresh clone. Regenerate
-with root `pnpm generate` after any change to a route, DTO, or `operationId`.
+Regenerate with root `pnpm generate` after any change to a route, DTO, or
+`operationId`.
 
 `buildOpenApiDocument` is shared by the served `/docs` and by
 `scripts/emit-openapi.ts`, so the generated document and the live one cannot
@@ -152,9 +144,6 @@ OpenAPI 3.0 document may say and what orval accepts:
   is left pointing at the pre-rename name — `listTopics` referencing
   `TopicDto_Output` when the component is `Topic_Output`. Without this, orval
   refuses to generate at all.
-
-The generated model names in `apps/client` come straight from these components, so
-renaming a schema's `.meta({ id })` renames a file there.
 
 `scripts/openapi-env.ts` fills in **placeholder credentials** for anything absent,
 because the document is derived from decorators alone and codegen must work on a
