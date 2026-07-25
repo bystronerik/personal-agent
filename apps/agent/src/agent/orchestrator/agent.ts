@@ -8,6 +8,7 @@ import {
   type Budget,
   budgetStopWhen,
   createPool,
+  DEFAULT_BUDGET,
   finalizeBudget,
 } from '../shared/budget'
 import type { AgentContext } from '../shared/run-context'
@@ -15,9 +16,6 @@ import { createSummaryTool, runSummary } from '../summary/agent'
 import { ORCHESTRATOR_INSTRUCTIONS, orchestratorTask } from './prompt'
 
 const ORCHESTRATOR_MAX_STEPS = 12
-
-/** A cautious default; a real caller passes limits sized to the model and corpus. */
-const DEFAULT_BUDGET: Budget = { softLimitUsd: 0.15, hardLimitUsd: 0.3 }
 
 export type RunBriefOptions = {
   model?: string

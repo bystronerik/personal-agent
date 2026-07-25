@@ -7,6 +7,9 @@ export type Budget = {
   reserveUsd?: number
 }
 
+/** A cautious default; a real caller passes limits sized to the model and corpus. */
+export const DEFAULT_BUDGET: Budget = { softLimitUsd: 0.15, hardLimitUsd: 0.3 }
+
 /**
  * A running USD tally shared by every model turn in one brief — the
  * orchestrator's turns and the nested research loop's turns fold into the same

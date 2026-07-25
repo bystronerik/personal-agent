@@ -6,10 +6,14 @@ import {
   type BudgetPool,
   budgetStopWhen,
   createPool,
+  DEFAULT_BUDGET,
   finalizeBudget,
 } from './budget'
 
-const BUDGET: Budget = { softLimitUsd: 0.15, hardLimitUsd: 0.3 }
+const BUDGET = DEFAULT_BUDGET
+const HARD = BUDGET.hardLimitUsd
+/** The pool a hard stop leaves behind: exactly at the ceiling. */
+const EXHAUSTED = HARD
 const MAX_STEPS = 12
 
 const spent = (usd: number): BudgetPool => {
@@ -27,22 +31,26 @@ const stoppedAtStart = (pool: BudgetPool, budget: Budget) =>
 
 describe('finalizeBudget', () => {
   it('leaves a run that stayed under the ceiling alone', () => {
-    expect(finalizeBudget(spent(0.1), BUDGET).hardLimitUsd).toBe(
-      BUDGET.hardLimitUsd,
-    )
+    expect(finalizeBudget(spent(HARD / 2), BUDGET).hardLimitUsd).toBe(HARD)
   })
 
   it('lifts the ceiling clear of an exhausted pool', () => {
-    expect(finalizeBudget(spent(0.3), BUDGET).hardLimitUsd).toBeCloseTo(0.45)
+    // The documented default reserve: half the hard limit, on top of the spend.
+    expect(finalizeBudget(spent(EXHAUSTED), BUDGET).hardLimitUsd).toBeCloseTo(
+      EXHAUSTED + HARD / 2,
+    )
   })
 
   it('honours an explicit reserve over the default fraction', () => {
-    const budget: Budget = { ...BUDGET, reserveUsd: 0.02 }
-    expect(finalizeBudget(spent(0.3), budget).hardLimitUsd).toBeCloseTo(0.32)
+    const reserveUsd = HARD / 10
+    const budget: Budget = { ...BUDGET, reserveUsd }
+    expect(finalizeBudget(spent(EXHAUSTED), budget).hardLimitUsd).toBeCloseTo(
+      EXHAUSTED + reserveUsd,
+    )
   })
 
   it('keeps the soft limit where it was', () => {
-    expect(finalizeBudget(spent(0.3), BUDGET).softLimitUsd).toBe(
+    expect(finalizeBudget(spent(EXHAUSTED), BUDGET).softLimitUsd).toBe(
       BUDGET.softLimitUsd,
     )
   })
@@ -58,11 +66,11 @@ describe('finalizeBudget', () => {
  */
 describe('the finalize path', () => {
   it('is stopped before its first turn on the exhausted budget', async () => {
-    await expect(stoppedAtStart(spent(0.3), BUDGET)).resolves.toBe(true)
+    await expect(stoppedAtStart(spent(EXHAUSTED), BUDGET)).resolves.toBe(true)
   })
 
   it('can still take a turn on the finalize budget', async () => {
-    const pool = spent(0.3)
+    const pool = spent(EXHAUSTED)
     await expect(
       stoppedAtStart(pool, finalizeBudget(pool, BUDGET)),
     ).resolves.toBe(false)
