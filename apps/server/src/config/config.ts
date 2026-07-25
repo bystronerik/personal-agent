@@ -15,8 +15,8 @@ const API_ENV = {
   corsOrigin: CORS_ORIGIN,
 }
 
-export function loadApiConfig(env: NodeJS.ProcessEnv = process.env) {
-  return loadEnv(API_ENV, { source: env, subject: 'The API' })
+export function loadApiConfig(source: NodeJS.ProcessEnv = process.env) {
+  return loadEnv(API_ENV, { source, subject: 'The API' })
 }
 
 export type ApiConfig = ReturnType<typeof loadApiConfig>

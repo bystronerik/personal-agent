@@ -5,8 +5,8 @@ import { ExtractJwt, Strategy } from 'passport-jwt'
 
 import type { AuthenticatedUser } from '@personal-agent/schemas/auth'
 
+import type { ApiConfig } from '../config/config'
 import { API_CONFIG } from '../config/config.module'
-import type { ApiConfig } from '../config/env'
 
 /** Only the claims this API acts on. Auth0 sends many more. */
 type AccessTokenPayload = {

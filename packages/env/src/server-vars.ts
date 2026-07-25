@@ -49,6 +49,25 @@ export const CORS_ORIGIN = envVar(
   z.url('must be a URL').default(DEFAULT_CORS_ORIGIN),
 )
 
+// --- OpenRouter (apps/agent) ---
+
+/** The first entry of `COMPARED_MODELS`, and what a run uses unless overridden. */
+export const DEFAULT_OPENROUTER_MODEL = 'x-ai/grok-4.5'
+
+export const OPENROUTER_API_KEY = envVar(
+  'OPENROUTER_API_KEY',
+  z
+    .string({
+      error: 'is required — create a key at https://openrouter.ai/keys',
+    })
+    .min(1),
+)
+
+export const OPENROUTER_MODEL = envVar(
+  'OPENROUTER_MODEL',
+  z.string().default(DEFAULT_OPENROUTER_MODEL),
+)
+
 // --- Telegram (packages/telegram) ---
 
 /** `<bot_id>:<secret>`, as issued by BotFather. */

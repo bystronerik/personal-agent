@@ -76,14 +76,16 @@ rather than in the strategy — which keeps only its internal `AccessTokenPayloa
 
 ## Config
 
-`loadApiConfig()` parses the environment through the shared loader. Domain and
-audience are regex/shape-checked so the common mistakes — pasting a URL as the
-domain, or the API URL as the audience — fail at boot with an explanation rather
-than as 401s.
+`config/config.ts` holds the spec; `loadApiConfig(source = process.env)` parses
+the environment through the shared loader, and `config.module.ts` provides the
+result as `API_CONFIG`. Domain and audience are regex/shape-checked so the common
+mistakes — pasting a URL as the domain, or the API URL as the audience — fail at
+boot with an explanation rather than as 401s.
 
-`env-file.ts` is a side-effect module imported **first** by `main.ts`: it loads
-the repo-root `.env`, three levels up from this file, because `dotenv/config`
-would only look in the working directory.
+`env-file.ts` is a **different** thing despite the similar name, which is why the
+spec is not called `env.ts`: it is a side-effect module imported **first** by
+`main.ts`, loading the repo-root `.env` three levels up from this file, because
+`dotenv/config` would only look in the working directory.
 
 ## Prisma
 

@@ -12,7 +12,9 @@ today the worker is exercised by the `agent` dev script and the evals.
 ```
 src/schema/      Zod schemas, one narrow file each + barrel (source of truth),
                  including the bound constants the schemas are built from
-src/llm/         client.ts owns the key, both SDK clients and env reads;
+src/config.ts    loadAgentConfig — the OPENROUTER_* spec, validated by
+                 @personal-agent/env
+src/llm/         client.ts memoizes both SDK clients;
                  @openrouter/sdk transport for structured calls; model ids
 src/agent/       shared/ (budget, blackboard, structured, run-context)
                  + prompts/ (fragments more than one agent needs)
@@ -102,7 +104,8 @@ limits sized to the model and corpus.
 
 ### Two clients, deliberately
 
-Both live in `llm/client.ts`, which owns the credential and memoizes each:
+Both live in `llm/client.ts`, which memoizes each and reads the key through
+`loadAgentConfig()`:
 
 - the `@openrouter/agent` client, for the loops — narrowed to `LoopClient` on the
   way into `AgentContext`.
@@ -138,9 +141,10 @@ same constants. Widening a bound updates every prompt that states it.
 `decode.ts` tolerates a markdown-fenced response rather than failing, and raises
 schema mismatches with the offending path.
 
-`models.ts` holds `DEFAULT_MODEL`, `COMPARED_MODELS` (whose first entry is the
-default), and `resolveModel(override?)` — the single
-override-then-`OPENROUTER_MODEL`-then-default rule.
+`models.ts` holds `COMPARED_MODELS` (whose first entry is
+`DEFAULT_OPENROUTER_MODEL`) and `resolveModel(override?)` — the single
+override-then-`OPENROUTER_MODEL` rule, the default now living on the variable's
+schema rather than here.
 
 ## Tools
 
@@ -203,6 +207,14 @@ fixture converges on its reference's score, that layer's scorers have stopped
 discriminating and every model eval on it is meaningless.
 
 ## Config
+
+`src/config.ts` is the only place this app reads the environment:
+`loadAgentConfig()` selects `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` from
+`@personal-agent/env` and validates both through the shared `loadEnv`, so a
+missing key and a malformed model id are reported together, keyed by their real
+variable names. It is called lazily — from the memoized client factories and from
+`resolveModel()` — so importing the agent core never requires a key, and
+`resolveModel(override)` short-circuits before the load.
 
 `vite.config.ts` loads the repo-root `.env` via `envDir` — evalite does not read
 `.env` on its own, and already-set variables still take precedence. `envPrefix`

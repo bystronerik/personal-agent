@@ -6,8 +6,8 @@ import { NestFactory } from '@nestjs/core'
 import { SwaggerModule } from '@nestjs/swagger'
 
 import { AppModule } from './app.module'
+import type { ApiConfig } from './config/config'
 import { API_CONFIG } from './config/config.module'
-import type { ApiConfig } from './config/env'
 import { buildOpenApiDocument } from './openapi'
 
 const app = await NestFactory.create(AppModule)

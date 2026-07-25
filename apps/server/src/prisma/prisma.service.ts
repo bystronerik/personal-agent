@@ -2,8 +2,8 @@ import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common'
 
 import { createPrismaClient, type PrismaClient } from '@personal-agent/db'
 
+import type { ApiConfig } from '../config/config'
 import { API_CONFIG } from '../config/config.module'
-import type { ApiConfig } from '../config/env'
 
 /**
  * Connecting is lazy: Prisma dials on first query, so `NestFactory.create()`

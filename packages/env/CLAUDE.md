@@ -11,7 +11,8 @@ but `zod`, and every other workspace depends on it. See the
 ```
 src/blank.ts         blankAsAbsent — the one copy of "a blank env var is absent"
 src/load.ts          envVar() + loadEnv() — the validator/formatter/throw
-src/server-vars.ts   Node-side variables (DATABASE_URL, AUTH0_*, API_*, TELEGRAM_*)
+src/server-vars.ts   Node-side variables (DATABASE_URL, AUTH0_*, API_*,
+                     OPENROUTER_*, TELEGRAM_*)
 src/client-vars.ts   browser variables (VITE_*)
 src/index.ts         package root `.`      — loader + server vars
 src/client.ts        subpath `./client`    — loader + client vars only
@@ -64,9 +65,20 @@ code, and the values survive a production build.
 nowhere. Node callers pass `process.env`; the browser passes statically-read
 `import.meta.env` values. That is what lets one package serve both.
 
-`apps/agent` needs only two optional scalars, so it keeps a thin `readEnv`
-(`src/utils/env.ts`) rather than a full spec — but that reader routes through this
-package's `blankAsAbsent`, so "a blank is absent" stays one function repo-wide.
+## The shape every consumer has
+
+A Node consumer declares its spec in `<workspace>/src/config.ts` and exports
+`load<Subject>Config(source: NodeJS.ProcessEnv = process.env)` —
+`loadApiConfig`, `loadTelegramConfig`, `loadAgentConfig`. Taking `source` as a
+defaulted parameter rather than reaching for `process.env` inside is what keeps
+each loader testable; `config.ts` is the name because `env.ts` collides with the
+*other* thing a workspace calls env (`apps/server/src/env-file.ts`, a dotenv
+side-effect). `apps/server`'s lives at `src/config/config.ts`, next to the Nest
+module that provides it.
+
+`apps/client` is the one exception, and a justified one: a browser module has no
+`process.env` to inject and must fail at import, so `src/env.ts` is an eager
+module-level `export const env = loadEnv(…)`.
 
 ## Adding or changing a variable
 

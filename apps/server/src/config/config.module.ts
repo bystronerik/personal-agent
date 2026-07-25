@@ -1,6 +1,6 @@
 import { Global, Module } from '@nestjs/common'
 
-import { type ApiConfig, loadApiConfig } from './env'
+import { type ApiConfig, loadApiConfig } from './config'
 
 export const API_CONFIG = Symbol('API_CONFIG')
 

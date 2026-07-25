@@ -80,8 +80,10 @@ their package's `CLAUDE.md`.
   `packages/db`. A new variable must also be declared in `turbo.json`, or a cached
   task is reused across a changed value.
 - **Env is Zod-validated at the boundary, and a blank is absent.** Every variable is
-  declared once in `packages/env`; consumers select the fields they need and validate
-  through the shared `loadEnv`, which reports all problems at once keyed by the real
+  declared once in `packages/env` — no exceptions; consumers select the fields they
+  need in a `<workspace>/src/config.ts` exporting
+  `load<Subject>Config(source = process.env)`, and validate through the shared
+  `loadEnv`, which reports all problems at once keyed by the real
   variable name. `.env` carries empty placeholders (`API_PORT=`), so `blankAsAbsent`
   lets a blank reach `.default()` as `undefined`. **Vite inlines every prefixed key
   it copies into the bundle it builds, so nothing secret may carry such a prefix.**

@@ -1,15 +1,14 @@
-import { readEnv } from './client'
+import { DEFAULT_OPENROUTER_MODEL } from '@personal-agent/env'
 
-/** Overridable per run via OPENROUTER_MODEL. Browse ids at https://openrouter.ai/models */
-export const DEFAULT_MODEL = 'x-ai/grok-4.5'
+import { loadAgentConfig } from '../config'
 
-/** Models compared by `pnpm eval:models`. */
+/** Models compared by `pnpm eval:models`. Browse ids at https://openrouter.ai/models */
 export const COMPARED_MODELS = [
-  DEFAULT_MODEL,
+  DEFAULT_OPENROUTER_MODEL,
   'minimax/minimax-m3',
   'deepseek/deepseek-v4-flash',
 ]
 
 /** The one env-over-default rule: an explicit override wins, then the variable. */
 export const resolveModel = (override?: string): string =>
-  override ?? readEnv('OPENROUTER_MODEL') ?? DEFAULT_MODEL
+  override ?? loadAgentConfig().model

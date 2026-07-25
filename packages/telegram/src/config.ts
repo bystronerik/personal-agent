@@ -17,11 +17,11 @@ const CONFIG_ENV = {
   chatId: TELEGRAM_CHAT_ID,
 }
 
-export const loadBotConnection = (env: NodeJS.ProcessEnv = process.env) =>
-  loadEnv(CONNECTION_ENV, { source: env, subject: 'Telegram' })
+export const loadBotConnection = (source: NodeJS.ProcessEnv = process.env) =>
+  loadEnv(CONNECTION_ENV, { source, subject: 'Telegram' })
 
-export const loadTelegramConfig = (env: NodeJS.ProcessEnv = process.env) =>
-  loadEnv(CONFIG_ENV, { source: env, subject: 'Telegram' })
+export const loadTelegramConfig = (source: NodeJS.ProcessEnv = process.env) =>
+  loadEnv(CONFIG_ENV, { source, subject: 'Telegram' })
 
 export type BotConnection = ReturnType<typeof loadBotConnection>
 export type TelegramConfig = ReturnType<typeof loadTelegramConfig>
