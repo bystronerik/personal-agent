@@ -23,23 +23,14 @@ what more than one package needs.
   blackboard, not model-serialized arguments. The loop is `@openrouter/agent`'s
   `callModel`; termination (`stopWhen` over a shared USD budget) stays ours.
 - **The agent core imports no caller framework.** Inside `apps/agent`, the core
-  (`agent/`, `schema/`, `tools/`, `grading/`, `eval/`) stays free of NestJS, HTTP,
-  and the delivery transport; only the worker's thin wiring layer imports
-  `packages/telegram`. Direction is `apps/agent → packages/*`, never the reverse.
+  stays free of NestJS, HTTP, and the delivery transport; only the worker's thin
+  wiring layer imports `packages/telegram`. Direction is `apps/agent → packages/*`,
+  never the reverse.
 - **Predictions are logged experiments, never financial advice** — each is
   machine-checkable and scored against reality later.
 - **The eval harness justifies prompt/agent changes** with a score, not a vibe.
   (`pnpm eval` currently reports without asserting — the failing gate is deferred
   until live tool calls make regressions likelier.)
-
-## Stack
-
-TypeScript (ESM, Turborepo, pnpm, Vite, SWC) · OpenRouter chat completions · Prisma 7
-on PostgreSQL (`pgvector/pgvector:pg17` via docker-compose) · Telegram delivery
-(grammY) · NestJS + OpenAPI + Auth0 + React + Mantine for the admin portal.
-
-The Postgres image carries pgvector, but nothing embeds anything yet — semantic
-search (to replace the keyword `search_news`) is unbuilt.
 
 ## How the packages relate
 
@@ -129,12 +120,6 @@ their package's `CLAUDE.md`.
   non-obvious contract, never to narrate design or history (that lives in these
   `CLAUDE.md` files and git). A variable needing an explanatory comment usually
   needs a better name.
-- **Internal code runs as TypeScript, unbuilt** — `tsx` for the agent/telegram
-  CLIs, `@swc-node/register` for the NestJS server (Nest's DI needs the decorator
-  metadata that `tsx`/esbuild don't emit but SWC does). `tsc` is typecheck-only
-  (`--noEmit`) everywhere.
-- Formatting and linting are Biome's (`biome.json`), enforced on staged files by a
-  Husky pre-commit hook.
 
 ## Working agreement
 

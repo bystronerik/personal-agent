@@ -6,12 +6,6 @@ them in `createZodDto`) and `apps/client` (which validates against them directly
 behaviour beyond parsing. See the [root CLAUDE.md](../../CLAUDE.md) for the
 workspace-wide picture.
 
-## Commands
-
-| Command | Effect |
-| --- | --- |
-| `typecheck` | `tsc --noEmit`. |
-
 ## Module resolution
 
 Uses the workspace default — `bundler` resolution, **no import extension, no
