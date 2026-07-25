@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
+
 import { Prisma, type Topic as TopicRow } from '@personal-agent/db'
 import { ErrorCode } from '@personal-agent/schemas/common'
 import type { Topic } from '@personal-agent/schemas/topics'

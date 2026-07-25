@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+
 import { MESSAGE_LIMIT, splitMessage } from './split'
 
 const within = (chunks: string[], limit: number) =>

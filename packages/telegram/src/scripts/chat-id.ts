@@ -1,4 +1,5 @@
 import type { Chat } from 'grammy/types'
+
 import { getUpdates } from '../client'
 import { loadBotConnection } from '../config'
 import { runScript } from './run-script'

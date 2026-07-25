@@ -1,5 +1,6 @@
 import { hasToolCall, tool } from '@openrouter/agent'
 import { z } from 'zod'
+
 import {
   type ResearchFindings,
   ResearchFindingsSchema,

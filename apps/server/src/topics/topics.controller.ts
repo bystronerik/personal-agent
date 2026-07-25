@@ -18,8 +18,9 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger'
-import type { AuthenticatedUser } from '@personal-agent/schemas/auth'
 import { ZodResponse } from 'nestjs-zod'
+
+import type { AuthenticatedUser } from '@personal-agent/schemas/auth'
 
 import { CurrentUser } from '../auth/current-user.decorator'
 import { ApiErrorDto } from '../common/api-error.dto'

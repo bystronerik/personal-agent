@@ -5,8 +5,9 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger'
-import type { AuthenticatedUser } from '@personal-agent/schemas/auth'
 import { ZodResponse } from 'nestjs-zod'
+
+import type { AuthenticatedUser } from '@personal-agent/schemas/auth'
 
 import { ApiErrorDto } from '../common/api-error.dto'
 // Value import: `emitDecoratorMetadata` records the DTO class at runtime, and a

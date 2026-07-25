@@ -1,6 +1,7 @@
 import { autoRetry } from '@grammyjs/auto-retry'
 import { Api } from 'grammy'
 import type { Message, Update } from 'grammy/types'
+
 import type { BotConnection, TelegramConfig } from './config'
 import { splitMessage } from './split'
 

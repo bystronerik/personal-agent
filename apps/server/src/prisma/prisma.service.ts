@@ -1,4 +1,5 @@
 import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common'
+
 import { createPrismaClient, type PrismaClient } from '@personal-agent/db'
 
 import { API_CONFIG } from '../config/config.module'

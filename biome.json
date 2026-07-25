@@ -181,6 +181,28 @@
   ],
   "assist": {
     "enabled": true,
-    "actions": { "source": { "organizeImports": "on" } }
+    "actions": {
+      "source": {
+        "organizeImports": {
+          "level": "on",
+          "options": {
+            "groups": [
+              ":NODE:",
+              ":BLANK_LINE:",
+              [
+                ":PACKAGE:",
+                ":PACKAGE_WITH_PROTOCOL:",
+                ":URL:",
+                "!@personal-agent/**"
+              ],
+              ":BLANK_LINE:",
+              "@personal-agent/**",
+              ":BLANK_LINE:",
+              [":ALIAS:", ":PATH:"]
+            ]
+          }
+        }
+      }
+    }
   }
 }

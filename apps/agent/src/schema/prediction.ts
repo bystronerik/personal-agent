@@ -1,4 +1,5 @@
 import { z } from 'zod'
+
 import { IsoDateTime } from './common'
 
 export const DirectionSchema = z.enum(['up', 'down', 'flat'])

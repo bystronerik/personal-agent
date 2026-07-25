@@ -1,5 +1,6 @@
 import { tool } from '@openrouter/agent'
 import { z } from 'zod'
+
 import type { ResponseSchema } from '../../llm/decode'
 import { type Prediction, PredictionSchema } from '../../schema'
 import { type AgentContext, withBudgetNotice } from '../shared/run-context'

@@ -1,9 +1,10 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { DATABASE_URL, envVar, loadEnv } from '@personal-agent/env'
 import { config as loadDotenv } from 'dotenv'
 import { defineConfig } from 'prisma/config'
+
+import { DATABASE_URL, envVar, loadEnv } from '@personal-agent/env'
 
 /** What docker-compose.yml serves, and what .env.example points at. */
 const DEFAULT_DATABASE_URL = 'postgresql://agent:agent@localhost:5432/agent'

@@ -1,7 +1,8 @@
 import { Controller, Get, HttpStatus, Logger } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
-import type { Health } from '@personal-agent/schemas/health'
 import { ZodResponse } from 'nestjs-zod'
+
+import type { Health } from '@personal-agent/schemas/health'
 
 import { Public } from '../auth/public.decorator'
 import { PrismaService } from '../prisma/prisma.service'

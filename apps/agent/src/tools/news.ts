@@ -1,5 +1,6 @@
 import { tool } from '@openrouter/agent'
 import { z } from 'zod'
+
 import type { SourceDoc } from '../schema'
 
 const SearchInput = z.object({

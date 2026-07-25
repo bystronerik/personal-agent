@@ -6,13 +6,14 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common'
+import type { Request, Response } from 'express'
+import { z } from 'zod'
+
 import {
   type ApiError,
   ErrorCode,
   ErrorCodeSchema,
 } from '@personal-agent/schemas/common'
-import type { Request, Response } from 'express'
-import { z } from 'zod'
 
 const INTERNAL_MESSAGE = 'Internal server error'
 

@@ -1,8 +1,9 @@
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common'
 import { PassportStrategy } from '@nestjs/passport'
-import type { AuthenticatedUser } from '@personal-agent/schemas/auth'
 import { passportJwtSecret } from 'jwks-rsa'
 import { ExtractJwt, Strategy } from 'passport-jwt'
+
+import type { AuthenticatedUser } from '@personal-agent/schemas/auth'
 
 import { API_CONFIG } from '../config/config.module'
 import type { ApiConfig } from '../config/env'

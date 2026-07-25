@@ -12,9 +12,11 @@ import {
   Title,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { CreateTopicSchema } from '@personal-agent/schemas/topics'
 import { useQueryClient } from '@tanstack/react-query'
 import { type FormEvent, useState } from 'react'
+
+import { CreateTopicSchema } from '@personal-agent/schemas/topics'
+
 import {
   getListTopicsQueryKey,
   useCreateTopic,
