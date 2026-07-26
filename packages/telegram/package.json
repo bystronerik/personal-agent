@@ -11,7 +11,7 @@
   },
   "files": ["src"],
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "build": "tsc",
     "telegram:send-test": "tsx --env-file-if-exists=../../.env src/scripts/send-test.ts",
     "telegram:chat-id": "tsx --env-file-if-exists=../../.env src/scripts/chat-id.ts",
     "test": "vitest run"

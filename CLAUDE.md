@@ -47,7 +47,9 @@ Every workspace dependency is one-directional:
   the schema, not query code.
 - **`packages/schemas` defines the API contract** — `apps/server` wraps its schemas
   in `createZodDto` and derives OpenAPI from them; `apps/client` parses the same
-  objects to validate a form before it becomes a request. Depends on nothing.
+  objects to validate a form before it becomes a request. Depends on nothing but
+  `zod` — which every consumer must resolve to the *same* copy, or schemas stop
+  validating silently (see [packages/schemas](packages/schemas/CLAUDE.md)).
 - **`packages/env` is the single home for environment loading.** All five other
   workspaces depend on it; it depends on nothing but `zod`. The browser reaches it
   **only** through the `@personal-agent/env/client` subpath, which never imports the
@@ -56,15 +58,18 @@ Every workspace dependency is one-directional:
   `apps/server/src/generated/openapi.yaml` can feed orval codegen. No runtime import
   crosses that boundary — they share `packages/schemas` and talk over HTTP, so a
   breaking API change fails the UI typecheck rather than at runtime.
-- **`apps/agent` is top-of-graph** — nothing imports it, so `typecheck` catches
-  the ESM mistakes a build would. It depends on `packages/db` and
+- **`apps/agent` is top-of-graph** — nothing imports it, so its own `build`
+  (`tsc && rolldown`) is what catches the ESM and type mistakes a
+  consumer otherwise would. It depends on `packages/db` and
   `packages/telegram` from `src/worker/` only; **rows are seeded by hand until an
   admin API owns them**, so nothing yet writes a schedule over HTTP.
 
-Nothing is compiled ahead of time; the ordering that matters is codegen. `pnpm
-generate` runs Prisma `generate` → the server's `openapi` emit → orval, and
-`typecheck`/`build`/`dev` all depend on it, so generated code is never stale.
-**Nothing generated is committed.**
+Nothing is compiled ahead of time; the ordering that matters is codegen, and it
+is expressed as three separate Turbo tasks rather than one: `generate:db`
+(Prisma client) → `generate:spec` (the server's OpenAPI emit) → `generate:api`
+(orval). `build` and `start:dev` both declare `["^generate:db",
+"^generate:spec", "generate:api"]`, so generated code is never stale and no task
+depends on codegen it does not use. **Nothing generated is committed.**
 
 ## Commands
 
@@ -72,16 +77,71 @@ Every command is a root script; Turbo fans it out to the workspaces that define 
 
 | Command | Effect |
 | --- | --- |
-| `pnpm generate` | Prisma client, OpenAPI document, portal's typed client. |
-| `pnpm build` | The one compiled artifact — the client's Vite bundle. |
-| `pnpm typecheck` / `pnpm lint` | tsc, and Biome (`lint:fix` writes). |
+| `pnpm build` | Every deployed artifact — `apps/client`'s Vite bundle, `apps/server`'s and `apps/agent`'s rolldown bundles — plus the typecheck of every package that has a `build`. Codegen runs first. |
+| `pnpm start` | Every long-running process at once: API, portal, **and the worker**. |
+| `pnpm generate:db` / `generate:spec` / `generate:api` | Prisma client, OpenAPI document, portal's typed client — individually; `build` and `start:dev` already chain them. |
+| `pnpm lint` | Biome (`lint:fix` writes; `lint:staged*` for the hook). |
 | `pnpm test` | Vitest (`packages/telegram`, `apps/agent`). |
-| `pnpm worker` | The scheduled brief worker. Long-running; needs Postgres. |
+| `pnpm eval` / `pnpm eval:models` | The agent's eval harness — the second one costs money. |
+| `pnpm db:up` / `db:down` / `db:migrate` / `db:studio` | Local Postgres and Prisma; `db:up`/`db:down` use `docker-compose.local.yml`, the database alone. |
 
-Per-app commands (`eval`/`eval:*`, `agent`, `worker --once`, `seed-schedule`,
-`dev`, `telegram:*`, `db:*`) live in their package's `CLAUDE.md`. `pnpm dev`
-deliberately does **not** start the worker — scheduling costs money, so it is its
-own command.
+**There is no root `typecheck` script, and no Turbo task by that name.** A
+package defines `typecheck` or `build`, never both, and `build` is what almost
+every package defines: bundlers do not typecheck — rolldown and Vite alike strip
+types with oxc and never check them — so every `build` leads with `tsc`, which
+emits nothing because each tsconfig sets `noEmit`. For `packages/db`,
+`packages/env` and `packages/schemas`, that `tsc` *is* the whole build. So
+**`pnpm build` is the repo's typecheck**, and CI needs nothing else — with one
+hole: `packages/telegram` still carries a `typecheck` script and no `build`, and
+with no `typecheck` task in `turbo.json` **nothing at the root checks it**; run
+it inside the package.
+
+Turbo fans a task out only to the workspaces that define it and says nothing
+about the ones it skipped. The same silence is why a Dockerfile calling a script
+that has since been renamed or folded away fails at image-build time rather than
+in review.
+
+**`pnpm start` starts the worker too** — `apps/agent`'s `start:dev` is
+`src/worker/main.ts`, so a dev session now schedules briefs, and scheduling
+costs money. Run the API and portal alone with `--filter` when that is not what
+you want.
+
+The remaining per-app commands are **not** root scripts: `agent`,
+`seed-schedule`, `eval:watch`, `telegram:*` and `start:prod` run through
+`pnpm --filter <package> <script>` or from the package directory, and are
+documented in that package's `CLAUDE.md`.
+
+## Images and compose
+
+**Four images, and every one of them builds from the repo root as context** —
+`docker build -f apps/server/Dockerfile .`, never from the package directory.
+The lockfile, `pnpm-workspace.yaml` and the sibling manifests a `--filter
+<pkg>...` install needs all live at the root, so a package-scoped context cannot
+resolve a workspace dependency. The root `.dockerignore` is what keeps that wide
+context cheap and safe: it drops `node_modules`, every `src/generated` tree, and
+`.env`.
+
+Three of the four are the deployed apps. **The fourth is `packages/db`** —
+`prisma migrate deploy` and nothing else, the only image built from a package
+rather than an app, because applying migrations belongs to the package that owns
+the schema. `docker-compose.yml` runs it to completion (`depends_on:
+service_completed_successfully`) before `server` and `agent` start, so neither
+ever queries a schema that has not been migrated. Its internals — why it carries
+no application code, and why the `pnpm rebuild -r` line is load-bearing — are in
+[packages/db](packages/db/CLAUDE.md).
+
+Two compose files, and they are not variants of each other:
+`docker-compose.local.yml` is Postgres alone, what `pnpm db:up` starts behind a
+local dev session; `docker-compose.yml` is the whole stack — postgres, migrate,
+server, client, agent. Both take `POSTGRES_*` from the root `.env` with `agent`
+as the default.
+
+**The client's configuration is build-time, everything else's is runtime.**
+Server, agent and migrate read `.env` values as compose `environment`; the
+client cannot, because Vite inlines every `VITE_*` value into the bundle — so
+they are compose build `args`, and a different Auth0 tenant or API origin is a
+different image. Only public identifiers may go there: a build argument is
+readable in the image history, and the bundle is public anyway.
 
 ## Cross-cutting patterns
 
@@ -98,13 +158,36 @@ own command.
   variable name. `.env` carries empty placeholders (`API_PORT=`), so `blankAsAbsent`
   lets a blank reach `.default()` as `undefined`. **Vite inlines every prefixed key
   it copies into the bundle it builds, so nothing secret may carry such a prefix.**
-- **One module system, no build step for internal code.** Every package is ESM with
-  `moduleResolution: bundler` (`tsconfig.base.json`), so **relative imports carry no
-  extension, anywhere.** Internal packages export their TypeScript `src` (`"exports"`
-  points at `.ts`, no `dist`); consumers compile just-in-time — Vite for
-  `apps/client`, `tsx` for the agent/telegram CLIs, `@swc-node/register` for
-  `apps/server`. `tsc` only typechecks (`--noEmit`). The one compiled artifact is the
-  client's `vite build` bundle.
+- **One module system, and internal packages are never built.** Every package is ESM
+  with `moduleResolution: bundler` (`tsconfig.base.json`), so **relative imports carry
+  no extension, anywhere.** Internal packages export their TypeScript `src`
+  (`"exports"` points at `.ts`, no `dist`) and nothing compiles them on their own —
+  a consumer either runs them just-in-time (`tsx` for the agent/telegram CLIs) or
+  **bundles them in** (Vite for `apps/client`, rolldown for `apps/server` and
+  `apps/agent`). `tsc` only typechecks (`--noEmit`).
+  Extensionless imports are why a consumer must be a bundler or a JIT compiler and
+  never plain `tsc` emit, which would leave `dist` unrunnable under node.
+- **All three deployed apps are bundles**, so none of their images carries source
+  or a compiler (the migration image is the exception, and carries neither
+  application code nor a bundle — see above).
+  `apps/client` runs `vite build`; `apps/server` and `apps/agent` run
+  **rolldown directly** — Vite 8 *is* rolldown (it is a direct dependency, and
+  rollup is gone), so this is the same engine without the web-app layer a backend
+  has no use for. In `apps/agent` it also keeps the build off `vite.config.ts`,
+  which in that package belongs to the eval harness.
+  **`nest build` cannot replace this in `apps/server`** even though it is a Nest
+  app: its default builder is plain `tsc`, which does not bundle, so the emitted
+  `dist` would resolve `@personal-agent/*` to raw TypeScript at runtime and carry
+  extensionless relative imports Node ESM cannot resolve. It is a repo-wide
+  module-resolution change, not a script swap.
+  Bundling flattens the dependency graph, so **an app must declare what its bundle
+  imports** even when it reaches it through a workspace package: both `apps/server`
+  and `apps/agent` depend on `@prisma/adapter-pg` directly because `packages/db` is
+  inlined into them, and `apps/agent` on `grammy` for `packages/telegram`.
+  **A bundler's `external` predicate is consulted twice per import** — once with
+  the written specifier, once with the resolved absolute path — so a predicate
+  that forgets the absolute case externalises everything and still exits 0,
+  emitting an entry that imports the source tree it was meant to inline.
 - **Zod schemas are the source of truth**; types are derived with `z.infer`, never
   hand-written. The same schema reaches the wire both ways — `apps/server` derives
   OpenAPI (nestjs-zod), `apps/agent` its `response_format` JSON Schema
@@ -119,10 +202,10 @@ own command.
 
 - **DRY over ceremony** — extract a shared interface or helper rather than
   duplicating; ask before pulling in a new external framework.
-- **Comments are rare and code-focused** — only to summarise complex logic or a
-  non-obvious contract, never to narrate design or history (that lives in these
-  `CLAUDE.md` files and git). A variable needing an explanatory comment usually
-  needs a better name.
+- **Do not write comments.** Two exceptions: a non-obvious contract a caller
+  would otherwise violate, and genuinely dense logic. Never write a comment that
+  restates the next line — `// load the config` above `loadConfig()` is the
+  failure mode. If a variable needs a comment, rename the variable.
 
 ## Working agreement
 

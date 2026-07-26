@@ -37,7 +37,7 @@ src/scripts/     one-off dev CLIs (not part of any eval) + runScript
 ```
 
 Nothing imports the worker — it is top-of-graph, not a dependency — so
-`typecheck` already catches the ESM mistakes a build would. The one barrel is
+`typecheck` and `build` are between it and an ESM mistake. The one barrel is
 `schema/index.ts`, where a single import surface beats naming eight files at
 every call site; everywhere else consumers import the module they mean.
 
@@ -45,6 +45,7 @@ every call site; everywhere else consumers import the module they mean.
 
 | Command | Effect |
 | --- | --- |
+| `pnpm build` | `tsc --noEmit && rolldown` — the deployed worker, one file at `dist/main.js`. **The `tsc` half is not decoration**: rolldown strips types with oxc and never checks them, so without it a type error bundles clean and crashes at 07:00. There is deliberately no separate `typecheck` script — the check belongs to the build, which is also why root `pnpm typecheck` skips this package and root `pnpm build` is what covers it. |
 | `pnpm test` | `vitest run` — the unit tests (`*.test.ts`); `.eval.ts` files are not picked up. |
 | `pnpm eval` | `evalite run scorers.eval.ts` — offline scorer regression, free, no key. |
 | `pnpm eval:models` | `evalite run model.eval` — every `*.model.eval.ts`, across every model in `llm/models.ts`. Costs money. |
@@ -443,3 +444,25 @@ secrets and this package must stay unbundled for the browser.
 
 `evalite.config.ts` carries only the timeout, generous because `eval:models` fans
 out across providers.
+
+`rolldown.config.ts` is the production build, and is **deliberately not
+`vite.config.ts`**: evalite resolves that file by name, so putting the build
+there would hand `envPrefix: ['OPENROUTER_']` to it and let a future
+`import.meta.env.OPENROUTER_API_KEY` inline the key into a shipped artifact.
+Separate files, no shared surface. Rolldown is not a new engine — Vite 8 *is*
+rolldown, and `apps/server` builds the same way — just addressed without the
+web-app layer this worker never uses.
+
+Its `external` predicate keeps only `@personal-agent/*` and relative ids in the
+bundle. **It has to test the absolute case too**: rolldown asks once with the
+written specifier and again with the resolved absolute path, so a predicate that
+answers only the first marks every module external, exits 0, and emits a 2 kB
+entry that imports `./db.ts` at runtime. The failure is silent — the size of
+`dist/main.js` is the tell.
+
+## Conventions
+
+- **Do not write comments.** Two exceptions: a non-obvious contract a caller
+  would otherwise violate, and genuinely dense logic. Never write a comment that
+  restates the next line — `// load the config` above `loadConfig()` is the
+  failure mode. If a variable needs a comment, rename the variable.

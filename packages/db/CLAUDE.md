@@ -19,13 +19,31 @@ Run from the repo root (`pnpm db:*`) or here directly.
 
 | Command | Effect |
 | --- | --- |
-| `pnpm db:up` / `pnpm db:down` | Start or stop the Postgres container (repo-root `docker-compose.yml`). |
+| `pnpm db:up` / `pnpm db:down` | Start or stop the Postgres container (repo-root `docker-compose.local.yml`). |
 | `pnpm db:migrate` | `prisma migrate dev` — author and apply a migration. |
 | `pnpm db:studio` | Browse the data. |
 | `migrate:deploy` | `prisma migrate deploy`, for a non-interactive apply. |
 | `generate` | Regenerate the client into `src/generated/`. Runs as part of root `pnpm generate`. |
 
-The container is `pgvector/pgvector:pg17` with `agent/agent/agent` on `:5432`,
+## The migration image
+
+`Dockerfile` here is the deployed `migrate:deploy` — the one image built from a
+package rather than an app, because applying migrations is this package's job and
+nothing about it belongs to the API that used to carry it (`docker-compose.yml`
+runs it to completion before `server` and `agent` start).
+
+It carries no application code and not even the generated client: migrations need
+the schema, `prisma/migrations`, and `prisma.config.ts` — hence `packages/env`'s
+source, which that config imports. It is also **not** a `--prod` install, since
+the Prisma CLI is a dev dependency and is the whole point of the image.
+
+The one non-obvious line is `pnpm rebuild -r prisma @prisma/engines`. Without
+`-r`, `pnpm rebuild` scopes to the working directory's project — the workspace
+root — and rebuilds nothing at all, silently: the schema engine is then absent, and
+the CLI downloads it on every container start, into a directory the `node` user
+cannot write. The failure is a permission error at migrate time, not at build time.
+
+The local dev container is `pgvector/pgvector:pg17` with `agent/agent/agent` on `:5432`,
 matching the `DATABASE_URL` in `.env.example`. The image carries pgvector for
 intended semantic search, but the schema has no vector column and nothing embeds
 anything yet.
@@ -84,3 +102,11 @@ finds** rather than relying on the database to reject a second one.
 agent stays the single source of truth for the two values and an enum migration is
 never needed. The cost is that the constraint lives in the reader: the worker
 parses every row and skips one it cannot use.
+
+## Conventions
+
+- **Do not write comments.** Two exceptions: a non-obvious contract a caller
+  would otherwise violate, and genuinely dense logic. Never write a comment that
+  restates the next line — `// load the config` above `loadConfig()` is the
+  failure mode. If a variable needs a comment, rename the variable. In
+  `schema.prisma` this covers `//` and `///` alike.

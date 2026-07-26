@@ -121,3 +121,10 @@ Telegram.
 The CLIs wrap their work in `runScript`, which prints one line and sets a
 non-zero exit code: misconfiguration is the common failure here, and a stack
 trace buries the line that says which variable is missing.
+
+## Conventions
+
+- **Do not write comments.** Two exceptions: a non-obvious contract a caller
+  would otherwise violate, and genuinely dense logic. Never write a comment that
+  restates the next line — `// load the config` above `loadConfig()` is the
+  failure mode. If a variable needs a comment, rename the variable.

@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "prestart:dev": "pnpm generate:api",
+    "start:dev": "vite --port 3000",
+    "prebuild": "pnpm generate:api",
+    "build": "tsc && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
-    "generate": "orval"
+    "generate:api": "orval"
   },
   "dependencies": {
     "@auth0/auth0-react": "^2.22.0",

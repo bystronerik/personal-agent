@@ -85,3 +85,10 @@ module-level `export const env = loadEnv(…)`.
 Declare it once in `server-vars.ts` or `client-vars.ts` (its name, schema, and any
 default), select it into the relevant consumer's spec, and — per the root file —
 declare it in `turbo.json` for any task that reads it.
+
+## Conventions
+
+- **Do not write comments.** Two exceptions: a non-obvious contract a caller
+  would otherwise violate, and genuinely dense logic. Never write a comment that
+  restates the next line — `// load the config` above `loadConfig()` is the
+  failure mode. If a variable needs a comment, rename the variable.

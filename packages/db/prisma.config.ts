@@ -6,7 +6,7 @@ import { defineConfig } from 'prisma/config'
 
 import { DATABASE_URL, envVar, loadEnv } from '@personal-agent/env'
 
-/** What docker-compose.yml serves, and what .env.example points at. */
+/** What docker-compose.local.yml serves, and what .env.example points at. */
 const DEFAULT_DATABASE_URL = 'postgresql://agent:agent@localhost:5432/agent'
 
 // Falling back rather than requiring the variable keeps `prisma generate` —

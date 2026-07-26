@@ -3,16 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": {
-    ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
-    }
-  },
-  "files": ["src"],
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "generate": "prisma generate",
+    "build": "tsc",
+    "generate:db": "prisma generate",
     "migrate": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "studio": "prisma studio"
@@ -28,5 +21,12 @@
     "prisma": "^7.9.0",
     "typescript": "^5.5.3",
     "zod": "^4.4.3"
-  }
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": ["src"]
 }

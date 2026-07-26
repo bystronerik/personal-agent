@@ -112,3 +112,10 @@ Feature pages live in `src/pages` (`TopicsPage`, and a read-only `AccountPage`
 pairing `useGetMe` with the Auth0 profile). A page invalidates the query key it
 affects after each mutation rather than mutating the cache by hand, and both
 render a failed request through the shared `describe` (`src/lib/errors.ts`).
+
+## Conventions
+
+- **Do not write comments.** Two exceptions: a non-obvious contract a caller
+  would otherwise violate, and genuinely dense logic. Never write a comment that
+  restates the next line — `// load the config` above `loadConfig()` is the
+  failure mode. If a variable needs a comment, rename the variable.

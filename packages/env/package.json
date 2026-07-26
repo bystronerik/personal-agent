@@ -3,6 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.3"
+  },
   "sideEffects": false,
   "exports": {
     ".": {
@@ -14,15 +23,5 @@
       "default": "./src/client.ts"
     }
   },
-  "files": ["src"],
-  "scripts": {
-    "typecheck": "tsc --noEmit"
-  },
-  "peerDependencies": {
-    "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "typescript": "^5.5.3",
-    "zod": "^4.4.3"
-  }
+  "files": ["src"]
 }

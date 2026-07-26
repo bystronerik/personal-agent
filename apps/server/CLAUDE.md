@@ -11,23 +11,56 @@ workspace-wide picture.
 | Command | Effect |
 | --- | --- |
 | `pnpm dev` (root) | `node --watch` on `src/main.ts` via swc-node, `:3000`; Swagger UI at `/docs`, document at `/openapi.json`. |
-| `start` | `node --import @swc-node/register/esm-register src/main.ts`. |
+| `build` | `tsc --noEmit && rolldown` → `dist/main.js`. Runs as part of root `pnpm build`. **The `tsc` half is not decoration**: rolldown strips types with oxc and never checks them, so without it a type error bundles clean and fails at boot. |
+| `start` | `node dist/main.js` — the built bundle, as the image runs it. |
 | `openapi` | Rewrites `src/generated/openapi.yaml` (swc-node). Runs as part of root `pnpm generate`. |
 
-## Runtime and decorators
+## Two ways this code runs
 
-The server runs its TypeScript through **`@swc-node/register`** — not `tsc`+`node
-dist`, and not `tsx`. Nest's DI resolves constructor dependencies by reading their
-parameter **types** at runtime (`emitDecoratorMetadata`), and `tsx`/esbuild don't
-emit that metadata; SWC does.
+**Development compiles just-in-time through `@swc-node/register`** — not `tsx`.
+Nest's DI resolves constructor dependencies by reading their parameter **types**
+at runtime (`emitDecoratorMetadata`), and esbuild — `tsx`'s compiler — cannot emit
+that metadata at all; SWC can. The `openapi` script rides the same path.
 
-Because of that runtime choice, three compiler settings are load-bearing:
+**Deployment is a bundle**: `rolldown` inlines `packages/db|env|schemas` and
+emits one `dist/main.js` that plain `node` runs, which is what lets the image
+carry no source, no tsconfig and no compiler. Rolldown transforms through **oxc**,
+which does emit decorator metadata — verified in the output, not assumed — so no
+separate SWC pass is wired into the build. Three consequences worth knowing:
+
+- **`nest build` is not an option here, despite this being a Nest app.** Its
+  default builder is plain `tsc`, which does not bundle: the emitted `dist` would
+  still `import '@personal-agent/db'` and resolve to raw TypeScript at runtime,
+  and this package's own relative imports carry no extension (`moduleResolution:
+  bundler`), so Node ESM could not resolve them either. Adopting it means giving
+  the three workspace packages real `dist` builds and extensioned imports —
+  reversing a repo-wide rule (see the [root CLAUDE.md](../../CLAUDE.md)), not
+  changing a script.
+- **The bundle's imports are the server's dependencies.** Inlining `packages/db`
+  moves its `@prisma/adapter-pg` and `@prisma/client` imports into a file that
+  resolves from `apps/server`, so both are declared here as well. Anything a
+  bundled workspace package starts importing has to be added the same way.
+- **Externalisation is by shape, not by list** (`rolldown.config.ts`): everything
+  bare stays external except `@personal-agent/*` and the oxc decorator helpers.
+  Nest lazily `require`s optional platform packages it may never load, and a
+  bundler cannot follow those — a deny-list would have to grow every time Nest
+  adds one. **The predicate has to test the absolute case too**: rolldown asks
+  once with the written specifier and again with the resolved absolute path, so
+  one that answers only the first marks every module external, exits 0, and emits
+  an entry importing the source tree it was meant to inline. The size of
+  `dist/main.js` (~39 kB) is the tell.
+
+Both paths read the same tsconfig, so three compiler settings are load-bearing:
 
 - `module: esnext` — overrides the base `preserve` so swc-node emits ESM (SWC has
   no `preserve` mode); paired with `moduleResolution: bundler`, imports stay
   extensionless. Top-level `await` in `main.ts` depends on the ESM output.
-- `emitDecoratorMetadata` — Nest reads constructor parameter types at runtime;
-  swc-node honours this tsconfig flag.
+- `emitDecoratorMetadata` — Nest reads constructor parameter types at runtime, and
+  both swc-node and the build's oxc pass honour this tsconfig flag; rolldown
+  discovers the tsconfig itself, so the build config states no decorator options.
+  **A DI failure that appears only in the container** is the signature of the
+  built path losing it; `grep -c design:paramtypes dist/main.js` is the check —
+  12 today, and zero is the failure.
 - `useDefineForClassFields: false` — `define` semantics would overwrite injected
   properties with `undefined`.
 
@@ -159,3 +192,10 @@ OpenAPI 3.0 document may say and what orval accepts:
 because the document is derived from decorators alone and codegen must work on a
 fresh clone — but `AppModule` still validates its configuration on construction.
 Only absent values are filled; a configured `.env` still wins.
+
+## Conventions
+
+- **Do not write comments.** Two exceptions: a non-obvious contract a caller
+  would otherwise violate, and genuinely dense logic. Never write a comment that
+  restates the next line — `// load the config` above `loadConfig()` is the
+  failure mode. If a variable needs a comment, rename the variable.
