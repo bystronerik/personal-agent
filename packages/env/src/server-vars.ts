@@ -68,6 +68,31 @@ export const OPENROUTER_MODEL = envVar(
   z.string().default(DEFAULT_OPENROUTER_MODEL),
 )
 
+// --- Corpus ingest (apps/ingest) ---
+
+const DEFAULT_EMBEDDING_MODEL = 'qwen/qwen3-embedding-8b'
+/**
+ * Must equal the width of `articles.embedding`. pgvector rejects a mismatched
+ * vector at insert time, and nothing checks the two agree before then.
+ */
+const DEFAULT_EMBEDDING_DIMENSIONS = 4000
+const DEFAULT_RETENTION_DAYS = 30
+
+export const OPENROUTER_EMBEDDING_MODEL = envVar(
+  'OPENROUTER_EMBEDDING_MODEL',
+  z.string().default(DEFAULT_EMBEDDING_MODEL),
+)
+
+export const OPENROUTER_EMBEDDING_DIMENSIONS = envVar(
+  'OPENROUTER_EMBEDDING_DIMENSIONS',
+  z.coerce.number().int().positive().default(DEFAULT_EMBEDDING_DIMENSIONS),
+)
+
+export const INGEST_RETENTION_DAYS = envVar(
+  'INGEST_RETENTION_DAYS',
+  z.coerce.number().int().positive().default(DEFAULT_RETENTION_DAYS),
+)
+
 // --- Telegram (packages/telegram) ---
 
 /** `<bot_id>:<secret>`, as issued by BotFather. */

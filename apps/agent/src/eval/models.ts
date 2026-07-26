@@ -2,9 +2,10 @@ import { createBlackboard } from '../agent/shared/blackboard'
 import { type Budget, createPool } from '../agent/shared/budget'
 import type { AgentContext } from '../agent/shared/run-context'
 import { evalSessionId } from '../agent/shared/session'
+import type { FixtureBriefInput } from '../fixtures/input'
 import { agentClient } from '../llm/client'
 import { COMPARED_MODELS } from '../llm/models'
-import type { BriefInput } from '../schema'
+import { fixtureProvider } from '../sources/fixture'
 
 /** The fan-out every `*.model.eval.ts` shares; evalite names each run by model id. */
 export const acrossModels = () =>
@@ -18,7 +19,7 @@ export const E2E_BUDGET: Budget = { softLimitUsd: 1.5, hardLimitUsd: 3 }
 
 /** A fresh context per run: its own pool and board, the real client. */
 export const layerContext = (
-  input: BriefInput,
+  input: FixtureBriefInput,
   model: string,
   sessionId: string,
 ): AgentContext => ({
@@ -27,6 +28,7 @@ export const layerContext = (
   pool: createPool(),
   budget: LAYER_BUDGET,
   client: agentClient(),
+  sources: fixtureProvider(input.docs),
   sessionId,
 })
 

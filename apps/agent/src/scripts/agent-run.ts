@@ -7,6 +7,7 @@ import { briefSessionId } from '../agent/shared/session'
 import { syntheticNews } from '../fixtures/synthetic-news'
 import { BRIEF_CHECKS } from '../grading/checks'
 import { resolveModel } from '../llm/models'
+import { fixtureProvider } from '../sources/fixture'
 import { runScript } from './run-script'
 
 await runScript(async () => {
@@ -19,6 +20,7 @@ await runScript(async () => {
   console.log(`Session: ${sessionId}\n`)
 
   const { brief, board, costUsd } = await runBrief(syntheticNews, {
+    sources: fixtureProvider(syntheticNews.docs),
     model,
     sessionId,
     onTurnEnd: (turn, cost, total) =>

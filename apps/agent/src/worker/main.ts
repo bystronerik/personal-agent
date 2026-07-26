@@ -1,4 +1,4 @@
-import { disconnectDb } from './db'
+import { disconnectDb } from '../db'
 import { telegramConfig } from './delivery/deliver'
 import { runScheduledBrief } from './delivery/run'
 import { parseWorkerArgs } from './runtime/cli-args'

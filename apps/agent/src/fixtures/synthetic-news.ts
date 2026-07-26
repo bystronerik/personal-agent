@@ -1,11 +1,17 @@
-import { type BriefInput, BriefInputSchema } from '../schema'
+import { type FixtureBriefInput, FixtureBriefInputSchema } from './input'
 
 /**
  * SYNTHETIC test data. Every entity, place and figure here is invented.
  */
-export const syntheticNews = BriefInputSchema.parse({
+export const syntheticNews = FixtureBriefInputSchema.parse({
   edition: 'morning',
   asOf: '2026-07-20T06:00:00Z',
+  topics: [
+    'central bank policy and interest-rate decisions',
+    'semiconductors and the broader technology supply chain',
+    'energy prices and shipping / logistics disruptions',
+    'labour-market and inflation data',
+  ],
   docs: [
     {
       id: 'doc-01',
@@ -38,4 +44,4 @@ export const syntheticNews = BriefInputSchema.parse({
       publishedAt: '2026-07-19T12:00:00Z',
     },
   ],
-} satisfies BriefInput)
+} satisfies FixtureBriefInput)

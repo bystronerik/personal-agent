@@ -20,6 +20,7 @@ FROM base AS prod-deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/agent/package.json ./apps/agent/
 COPY packages/db/package.json ./packages/db/
+COPY packages/embedding/package.json ./packages/embedding/
 COPY packages/env/package.json ./packages/env/
 COPY packages/telegram/package.json ./packages/telegram/
 
@@ -33,6 +34,7 @@ FROM base AS builder
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/agent/package.json ./apps/agent/
 COPY packages/db/package.json ./packages/db/
+COPY packages/embedding/package.json ./packages/embedding/
 COPY packages/env/package.json ./packages/env/
 COPY packages/telegram/package.json ./packages/telegram/
 
@@ -42,6 +44,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 
 COPY tsconfig.base.json ./
 COPY packages/db ./packages/db
+COPY packages/embedding ./packages/embedding
 COPY packages/env ./packages/env
 COPY packages/telegram ./packages/telegram
 COPY apps/agent ./apps/agent

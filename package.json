@@ -13,6 +13,7 @@
     "db:down": "docker compose -f docker-compose.local.yml down",
     "db:migrate": "pnpm --filter @personal-agent/db migrate",
     "db:studio": "pnpm --filter @personal-agent/db studio",
+    "ingest": "pnpm --filter @personal-agent/ingest ingest",
     "eval": "turbo run eval",
     "eval:models": "turbo run eval:models",
     "generate:db": "turbo run generate:db",

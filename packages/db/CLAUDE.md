@@ -44,9 +44,10 @@ the CLI downloads it on every container start, into a directory the `node` user
 cannot write. The failure is a permission error at migrate time, not at build time.
 
 The local dev container is `pgvector/pgvector:pg17` with `agent/agent/agent` on `:5432`,
-matching the `DATABASE_URL` in `.env.example`. The image carries pgvector for
-intended semantic search, but the schema has no vector column and nothing embeds
-anything yet.
+matching the `DATABASE_URL` in `.env.example`. The extension is created by the
+`corpus_and_schedule_topics` migration, and `articles.embedding` is the column that
+needs it — written by `apps/ingest`, read by `apps/agent`, and `NOT NULL` in both
+directions.
 
 ## Prisma 7
 
@@ -102,6 +103,83 @@ finds** rather than relying on the database to reject a second one.
 agent stays the single source of truth for the two values and an enum migration is
 never needed. The cost is that the constraint lives in the reader: the worker
 parses every row and skips one it cannot use.
+
+`Topic` hangs off a **schedule**, not a user — a morning markets brief and an
+evening brief on something else are different subscriptions — but it keeps a
+`userId` column so owner-scoped queries stay a plain `where` with no join. A
+denormalised owner can drift from the schedule's, which would make a row visible
+through one query path and invisible through the other, so it is **enforced by a
+composite foreign key**: `(schedule_id, user_id)` references
+`schedules(id, user_id)`, which is the only reason `Schedule` carries
+`@@unique([id, userId])`. Postgres rejects a mismatched pair outright; the API
+never has to be trusted to keep the two in step.
+
+`Source` is **identity for the trusted feed list, not the list itself** — the
+feeds are a const in `../../apps/ingest/src/feeds/sources.ts`, and the row exists because
+`Article.sourceId` is a foreign key that needs something stable to point at.
+Ingest upserts one row per feed at boot, keyed on `feedUrl` so an id survives a
+rename. That is the whole model: `id`, `name`, `feedUrl` and the timestamps.
+
+The `slim_sources` migration dropped what the code took over — `cron`, `timezone`,
+`adapter`, `enabled`, and the `etag`/`lastModified`/`lastPolledAt` a poller used
+to keep here so a conditional request survived a restart (they are a map in
+`apps/ingest/src/feeds/validators.ts` now). Unlike `Schedule`, this table is not
+where a feed is configured, and the columns went rather than being left unread:
+one nothing reads is a second copy of the list, free to disagree with the const
+that governs. Adding a feed is a code change and a deploy; it needs no row edit,
+and there is no seed step.
+
+`Article.embedding` is `Unsupported("halfvec(4000)")`, so **Prisma can store it but
+cannot select or filter on it** — similarity search is `$queryRaw` against the
+HNSW index (`halfvec_cosine_ops`), which the migration creates by hand because
+Prisma cannot express either.
+
+**`@@index([embedding], map: "articles_embedding_idx")` on the model is not a
+description of the index that exists** — Prisma has no `Hnsw` index type, so what
+the datamodel declares is a btree. It is there because otherwise `migrate dev`
+reads an index it cannot express and emits a `DROP INDEX` for it on *every* run;
+the diff compares an index's name and columns and never its access method, so a
+declared btree of the right name is enough to stop that. **The name in the two
+files has to stay in step**, and a `db push` or a datamodel-derived baseline would
+build the btree for real — which succeeds on an empty table and then fails on the
+first row (`index row size 8016 exceeds btree version 4 maximum 2704`), so neither
+is safe here.
+
+`embedding` and `embeddingModel` are both `NOT NULL` because `apps/ingest` embeds
+before it inserts — `insertArticles` takes an `EmbeddedArticle`, and a failed
+`embedDocuments` aborts the poll rather than storing an unembedded row. Relaxing
+either is what a store-now-backfill-later ingest would need; until then a nullable
+vector would not be an error, it would be an article silently invisible to half of
+the fused ranking — and a vector whose producing model is unrecorded is one the
+re-embed below cannot find.
+
+**4000 is not the model's dimension — it is the index's ceiling.**
+`qwen/qwen3-embedding-8b` returns 4096, and an HNSW entry has to fit one 8 kB
+page: at 4 bytes per dimension `vector` caps out at 2000, at 2 bytes `halfvec`
+reaches 4000. So `halfvec` is what buys the extra 2000 dimensions, and 4000 is the
+widest embedding pgvector will index at all — a `vector(4096)` column is storable
+but can only be sequentially scanned. Qwen3 embeddings are MRL-trained and
+OpenRouter honours a `dimensions` request parameter, so ingest asks for 4000 and
+gets a truncation the model was built for. **`dimensions` and the column must
+agree**; nothing checks it, and a mismatch fails at the first insert.
+
+fp16 is the trade, and cosine ranking does not notice it: the same three probe
+texts rank identically at `halfvec(4000)` and `vector(2000)` (0.15 for a
+paraphrase, 0.43 for an unrelated story).
+
+The dimension is a schema commitment either way: a different embedding model means
+a migration plus a re-embed, which is what `embeddingModel` on the row exists to
+make progressive.
+
+**Whether the index earns its keep is a separate question from its width.** On
+10k rows the recency-filtered exact scan this corpus actually issues took 11 ms
+unindexed — the same as the indexed query — while HNSW cost 35 s to build and
+missed two of the true top ten. The index is here for a corpus that outgrows that,
+not because the current one needs it.
+
+`ArticleDelivery` records what a schedule has already been sent, so a later brief
+can exclude it — written by the worker's delivery step, read as the `NOT EXISTS`
+that narrows the retrieval pool.
 
 ## Conventions
 

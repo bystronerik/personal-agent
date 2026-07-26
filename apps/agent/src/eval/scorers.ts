@@ -1,5 +1,6 @@
 import { createScorer } from 'evalite'
 
+import type { FixtureBriefInput } from '../fixtures/input'
 import {
   BRIEF_CHECKS,
   type NamedCheck,
@@ -7,7 +8,6 @@ import {
   RESEARCH_CHECKS,
   SUMMARY_CHECKS,
 } from '../grading/checks'
-import type { BriefInput } from '../schema'
 
 /**
  * Wraps each named check as an evalite scorer over one artifact type. Details
@@ -15,7 +15,7 @@ import type { BriefInput } from '../schema'
  */
 function toScorers<T>(checks: NamedCheck<T>[]) {
   return checks.map((check) =>
-    createScorer<BriefInput, T>({
+    createScorer<FixtureBriefInput, T>({
       name: check.checkName,
       scorer: ({ input, output }) => {
         const result = check(output, input)

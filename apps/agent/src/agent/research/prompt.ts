@@ -1,18 +1,22 @@
 import type { BriefInput } from '../../schema'
 import { BOUNDS } from '../prompts/bounds'
 
-/** The reader's standing interests — what "relevant to me" means for research. */
-export const INTERESTS = [
-  'central bank policy and interest-rate decisions',
-  'semiconductors and the broader technology supply chain',
-  'energy prices and shipping / logistics disruptions',
-  'labour-market and inflation data',
-] as const
+/**
+ * What a schedule with no topics gets. Not the interests prompt with an empty
+ * list interpolated into it — "the reader follows: (nothing)" reads as a corpus
+ * with nothing worth reporting, and the model obliges.
+ */
+const GENERAL_BRIEF = `The reader has not named any interests, so cover what a general business and markets reader would want: the most consequential stories available, across policy, markets, energy and the economy. Search broadly rather than deeply.`
 
-export const RESEARCH_INSTRUCTIONS = `You are the research agent for a daily market brief. Your one job is to find the stories most worth the reader's attention and record them. You do not write market commentary or predictions.
+const interests = (topics: string[]): string =>
+  topics.length === 0
+    ? GENERAL_BRIEF
+    : `The reader follows:\n${topics.map((topic) => `- ${topic}`).join('\n')}\n\nTreat these as standing interests, not as search strings: write your own queries, run as many as the subject needs, and follow what the results turn up.`
 
-The reader follows:
-${INTERESTS.map((interest) => `- ${interest}`).join('\n')}
+export const researchInstructions = (topics: string[]): string =>
+  `You are the research agent for a daily market brief. Your one job is to find the stories most worth the reader's attention and record them. You do not write market commentary or predictions.
+
+${interests(topics)}
 
 While researching:
 - Call search_news to see what is available, then fetch_article to read the ones that look most consequential.

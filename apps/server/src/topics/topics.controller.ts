@@ -35,7 +35,7 @@ import { TopicsService } from './topics.service'
   type: ApiErrorDto,
   description: 'Missing or invalid access token',
 })
-@Controller('topics')
+@Controller('schedules/:scheduleId/topics')
 export class TopicsController {
   constructor(private readonly topics: TopicsService) {}
 
@@ -44,10 +44,13 @@ export class TopicsController {
   @ZodResponse({
     status: HttpStatus.OK,
     type: [TopicDto],
-    description: 'Subjects to research',
+    description: 'Subjects to research for this schedule',
   })
-  list(@CurrentUser() user: AuthenticatedUser) {
-    return this.topics.list(user.userId)
+  list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('scheduleId', ParseUUIDPipe) scheduleId: string,
+  ) {
+    return this.topics.list(user.userId, scheduleId)
   }
 
   @Post()
@@ -57,12 +60,20 @@ export class TopicsController {
     type: ApiErrorDto,
     description: 'Validation failed',
   })
+  @ApiNotFoundResponse({
+    type: ApiErrorDto,
+    description: 'No such schedule',
+  })
   @ApiConflictResponse({
     type: ApiErrorDto,
     description: 'The subject is already on the list',
   })
-  create(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateTopicDto) {
-    return this.topics.create(user.userId, body.subject)
+  create(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('scheduleId', ParseUUIDPipe) scheduleId: string,
+    @Body() body: CreateTopicDto,
+  ) {
+    return this.topics.create(user.userId, scheduleId, body.subject)
   }
 
   @Delete(':id')
@@ -72,8 +83,9 @@ export class TopicsController {
   @ApiNotFoundResponse({ type: ApiErrorDto, description: 'No such topic' })
   remove(
     @CurrentUser() user: AuthenticatedUser,
+    @Param('scheduleId', ParseUUIDPipe) scheduleId: string,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
-    return this.topics.remove(user.userId, id)
+    return this.topics.remove(user.userId, scheduleId, id)
   }
 }

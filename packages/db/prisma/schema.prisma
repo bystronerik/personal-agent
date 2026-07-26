@@ -11,22 +11,9 @@ datasource db {
 
 model User {
   id        String     @id
-  topics    Topic[]
   schedules Schedule[]
 
   @@map("users")
-}
-
-model Topic {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  subject   String
-  createdAt DateTime @default(now()) @map("created_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, subject])
-  @@map("topics")
 }
 
 model Schedule {
@@ -40,8 +27,69 @@ model Schedule {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topics     Topic[]
+  deliveries ArticleDelivery[]
 
+  @@unique([id, userId])
   @@index([enabled])
   @@map("schedules")
+}
+
+model Topic {
+  id         String   @id @default(uuid())
+  scheduleId String   @map("schedule_id")
+  userId     String   @map("user_id")
+  subject    String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  schedule Schedule @relation(fields: [scheduleId, userId], references: [id, userId], onDelete: Cascade)
+
+  @@unique([scheduleId, subject])
+  @@index([userId])
+  @@map("topics")
+}
+
+model Source {
+  id        String   @id @default(uuid())
+  name      String
+  feedUrl   String   @unique @map("feed_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  articles Article[]
+
+  @@map("sources")
+}
+
+model Article {
+  id             String                      @id @default(uuid())
+  sourceId       String                      @map("source_id")
+  url            String                      @unique
+  title          String
+  summary        String
+  body           String?
+  publishedAt    DateTime                    @map("published_at")
+  ingestedAt     DateTime                    @default(now()) @map("ingested_at")
+  embedding      Unsupported("halfvec(4000)")
+  embeddingModel String                      @map("embedding_model")
+
+  source     Source            @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  deliveries ArticleDelivery[]
+
+  @@index([publishedAt])
+  @@index([embedding], map: "articles_embedding_idx")
+  @@map("articles")
+}
+
+model ArticleDelivery {
+  scheduleId String   @map("schedule_id")
+  articleId  String   @map("article_id")
+  briefRunAt DateTime @map("brief_run_at")
+
+  schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  article  Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@id([scheduleId, articleId])
+  @@map("article_deliveries")
 }

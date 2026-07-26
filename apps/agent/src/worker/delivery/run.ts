@@ -1,8 +1,10 @@
 import { runBrief } from '../../agent/orchestrator/agent'
 import type { Budget } from '../../agent/shared/budget'
 import { briefSessionId } from '../../agent/shared/session'
+import { corpusProvider } from '../../sources/corpus'
 import { markRun, type ScheduleDefinition } from '../scheduling/schedules'
 import { deliverBrief, deliveredBefore } from './deliver'
+import { recordDelivered } from './delivered'
 import { buildBriefInput } from './input'
 
 /**
@@ -24,11 +26,12 @@ export async function runScheduledBrief(
   schedule: ScheduleDefinition,
   now: Date,
 ): Promise<void> {
-  const input = buildBriefInput(schedule, now)
+  const input = await buildBriefInput(schedule, now)
   const sessionId = briefSessionId(input)
   console.log(`[${schedule.id}] ${input.edition} brief starting — ${sessionId}`)
 
   const { brief, costUsd } = await runBrief(input, {
+    sources: corpusProvider({ scheduleId: schedule.id }),
     budget: WORKER_BUDGET,
     sessionId,
   })
@@ -47,8 +50,9 @@ export async function runScheduledBrief(
     throw error
   }
   await markRun(schedule.id, now)
+  const recorded = await recordDelivered(schedule.id, brief, now)
 
   console.log(
-    `[${schedule.id}] delivered in ${messages} message(s) — $${costUsd.toFixed(4)}`,
+    `[${schedule.id}] delivered in ${messages} message(s), ${recorded} article(s) recorded — $${costUsd.toFixed(4)}`,
   )
 }

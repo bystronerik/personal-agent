@@ -1,6 +1,7 @@
 import { agentClient, type LoopClient } from '../../llm/client'
 import { resolveModel } from '../../llm/models'
 import { type Brief, type BriefInput, BriefSchema } from '../../schema'
+import type { SourceProvider } from '../../sources/provider'
 import { createPredictionTool, runPrediction } from '../prediction/agent'
 import { createResearchTool, runResearch } from '../research/agent'
 import { type Blackboard, createBlackboard } from '../shared/blackboard'
@@ -20,6 +21,8 @@ import { ORCHESTRATOR_INSTRUCTIONS, orchestratorTask } from './prompt'
 const ORCHESTRATOR_MAX_STEPS = 12
 
 export type RunBriefOptions = {
+  /** Where research reads. Required — see `AgentContext.sources`. */
+  sources: SourceProvider
   model?: string
   budget?: Budget
   /** Defaults to the shared `@openrouter/agent` client; injectable for tests. */
@@ -45,7 +48,7 @@ export type BriefRun = {
  */
 export async function runBrief(
   input: BriefInput,
-  options: RunBriefOptions = {},
+  options: RunBriefOptions,
 ): Promise<BriefRun> {
   const model = resolveModel(options.model)
   const budget = options.budget ?? DEFAULT_BUDGET
@@ -58,6 +61,7 @@ export async function runBrief(
     pool,
     budget,
     client: options.client ?? agentClient(),
+    sources: options.sources,
     sessionId,
   }
 

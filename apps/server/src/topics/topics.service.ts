@@ -14,6 +14,7 @@ const UNIQUE_VIOLATION = 'P2002'
 
 const toTopic = (row: TopicRow): Topic => ({
   id: row.id,
+  scheduleId: row.scheduleId,
   subject: row.subject,
   createdAt: row.createdAt.toISOString(),
 })
@@ -22,18 +23,24 @@ const toTopic = (row: TopicRow): Topic => ({
 export class TopicsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(userId: string): Promise<Topic[]> {
+  async list(userId: string, scheduleId: string): Promise<Topic[]> {
     const rows = await this.prisma.client.topic.findMany({
-      where: { userId },
+      where: { scheduleId, userId },
       orderBy: { createdAt: 'desc' },
     })
     return rows.map(toTopic)
   }
 
-  async create(userId: string, subject: string): Promise<Topic> {
+  async create(
+    userId: string,
+    scheduleId: string,
+    subject: string,
+  ): Promise<Topic> {
+    await this.assertOwnsSchedule(userId, scheduleId)
+
     try {
       const row = await this.prisma.client.topic.create({
-        data: { userId, subject },
+        data: { scheduleId, userId, subject },
       })
       return toTopic(row)
     } catch (error) {
@@ -52,15 +59,37 @@ export class TopicsService {
   }
 
   /** Scoped by owner, so an id guessed by another caller reads as missing. */
-  async remove(userId: string, id: string): Promise<void> {
+  async remove(userId: string, scheduleId: string, id: string): Promise<void> {
     const { count } = await this.prisma.client.topic.deleteMany({
-      where: { id, userId },
+      where: { id, scheduleId, userId },
     })
     if (count === 0) {
       throw new NotFoundException({
         message: `No topic with id ${id}`,
         errorCode: ErrorCode.TOPIC_NOT_FOUND,
         params: { id },
+      })
+    }
+  }
+
+  /**
+   * The composite `(schedule_id, user_id)` key would reject a schedule the
+   * caller does not own, but as a foreign-key error — a 500 where the caller
+   * should see "no such schedule".
+   */
+  private async assertOwnsSchedule(
+    userId: string,
+    scheduleId: string,
+  ): Promise<void> {
+    const schedule = await this.prisma.client.schedule.findFirst({
+      where: { id: scheduleId, userId },
+      select: { id: true },
+    })
+    if (!schedule) {
+      throw new NotFoundException({
+        message: `No schedule with id ${scheduleId}`,
+        errorCode: ErrorCode.SCHEDULE_NOT_FOUND,
+        params: { id: scheduleId },
       })
     }
   }

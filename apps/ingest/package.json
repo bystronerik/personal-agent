@@ -1,0 +1,29 @@
+{
+  "name": "@personal-agent/ingest",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc && rolldown -c rolldown.config.ts",
+    "test": "vitest run",
+    "ingest": "node --import tsx/esm --env-file-if-exists=../../.env src/main.ts"
+  },
+  "dependencies": {
+    "@openrouter/sdk": "^0.13.65",
+    "@personal-agent/db": "workspace:*",
+    "@personal-agent/embedding": "workspace:*",
+    "@personal-agent/env": "workspace:*",
+    "@prisma/adapter-pg": "^7.9.0",
+    "@prisma/client": "^7.9.0",
+    "croner": "^10.0.1",
+    "fast-xml-parser": "^5.2.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "rolldown": "~1.1.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.5.3",
+    "vitest": "^4.1.10"
+  }
+}

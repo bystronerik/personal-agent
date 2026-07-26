@@ -11,12 +11,15 @@
     "eval:watch": "evalite watch",
     "agent": "tsx --env-file-if-exists=../../.env src/scripts/agent-run.ts",
     "start:dev": "node --import tsx/esm --env-file-if-exists=../../.env src/worker/main.ts",
-    "seed-schedule": "tsx --env-file-if-exists=../../.env src/scripts/seed-schedule.ts"
+    "seed-schedule": "tsx --env-file-if-exists=../../.env src/scripts/seed-schedule.ts",
+    "probe-corpus": "tsx --env-file-if-exists=../../.env src/scripts/probe-corpus.ts"
   },
   "dependencies": {
     "@grammyjs/auto-retry": "^2.0.2",
     "@openrouter/agent": "^0.7.2",
+    "@openrouter/sdk": "^0.13.65",
     "@personal-agent/db": "workspace:*",
+    "@personal-agent/embedding": "workspace:*",
     "@personal-agent/env": "workspace:*",
     "@personal-agent/telegram": "workspace:*",
     "@prisma/adapter-pg": "^7.9.0",

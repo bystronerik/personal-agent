@@ -10,7 +10,7 @@ import { createNewsTools } from '../../tools/news'
 import { BOUNDS } from '../prompts/bounds'
 import { meterLoop } from '../shared/budget'
 import { type AgentContext, withBudgetNotice } from '../shared/run-context'
-import { RESEARCH_INSTRUCTIONS, researchTask } from './prompt'
+import { researchInstructions, researchTask } from './prompt'
 
 const RESEARCH_MAX_STEPS = 24
 
@@ -43,16 +43,13 @@ export async function runResearch(
   ctx: AgentContext,
   focus?: string,
 ): Promise<ResearchFindings> {
-  const tools = [
-    ...createNewsTools(ctx.board.input.docs),
-    recordFindingsTool(ctx),
-  ]
+  const tools = [...createNewsTools(ctx.sources), recordFindingsTool(ctx)]
 
   const meter = meterLoop(ctx.pool, ctx.budget, RESEARCH_MAX_STEPS)
   const result = ctx.client.callModel({
     model: ctx.model,
     sessionId: ctx.sessionId,
-    instructions: RESEARCH_INSTRUCTIONS,
+    instructions: researchInstructions(ctx.board.input.topics),
     input: researchTask(ctx.board.input, focus),
     tools,
     temperature: 0,

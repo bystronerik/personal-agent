@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
+import { agentDb } from '../../db'
 import { type Edition, EditionSchema } from '../../schema'
-import { workerDb } from '../db'
 import { isCronExpression, isTimeZone } from './pattern-checks'
 
 /**
@@ -47,7 +47,7 @@ let reported = new Map<string, string>()
  * pass, so fixing the row is enough — no restart.
  */
 export async function listEnabledSchedules(): Promise<ScheduleDefinition[]> {
-  const rows = await workerDb().schedule.findMany({
+  const rows = await agentDb().schedule.findMany({
     where: { enabled: true },
     orderBy: { createdAt: 'asc' },
   })
@@ -79,7 +79,7 @@ export async function findSchedule(
 
 /** Written only after a brief is delivered — see `runScheduledBrief`. */
 export async function markRun(id: string, at: Date): Promise<void> {
-  await workerDb().schedule.update({
+  await agentDb().schedule.update({
     where: { id },
     data: { lastRunAt: at },
   })

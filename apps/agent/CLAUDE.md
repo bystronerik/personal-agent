@@ -5,19 +5,30 @@ tools), its eval harness, and the long-running process that fires briefs on the
 schedules in Postgres and delivers them. See the
 [root CLAUDE.md](../../CLAUDE.md) for the constraints this exists to satisfy.
 
-`src/worker/` is the **only** part that touches a caller's world — Prisma,
-Telegram, croner, signals. Everything else here is reachable with no database,
-no key, and no network, which is what keeps the core testable and the
-non-negotiable ("the agent core imports no caller framework") true by structure
-rather than by discipline.
+`src/worker/` owns the **process**: croner, signals, Telegram, the reconcile loop.
+It is no longer the only part that reaches Postgres — **`src/sources/corpus.ts`
+does too**, deliberately, because retrieval is the agent's own job and not the
+scheduler's.
+
+That is a change from how this package used to be described, and it costs
+something worth naming. "An eval needs no database" used to be true *by
+structure*; it is now true by **injection**. Every layer takes its corpus as a
+`SourceProvider`, evals and tests pass `fixture.ts`, and `corpus.ts` is simply
+never imported on that path — so Prisma never loads and no connection string is
+read. `src/config.test.ts` pins the half of this that a type cannot: the agent and
+embedding configs load with no `DATABASE_URL`, and only `loadDatabaseConfig`
+demands one. Break that and `pnpm eval` starts needing Postgres, quietly.
 
 ## Layout
 
 ```
 src/schema/      Zod schemas, one narrow file each + barrel (source of truth),
                  including the bound constants the schemas are built from
-src/config.ts    loadAgentConfig — the OPENROUTER_* spec, validated by
-                 @personal-agent/env
+src/config.ts    loadAgentConfig / loadDatabaseConfig / loadEmbeddingConfig —
+                 three specs, deliberately separate (see Config)
+src/db.ts        the one Prisma client, shared by the corpus and the worker
+src/sources/     provider.ts (the seam), fixture.ts (in-memory, for evals),
+                 corpus.ts (pgvector — the only core file touching Postgres)
 src/llm/         client.ts memoizes the one SDK client; the Zod↔JSON-Schema
                  pair (json-schema.ts, decode.ts); model ids
 src/agent/       shared/ (budget, blackboard, structured, run-context, session)
@@ -29,10 +40,11 @@ src/grading/     checks.ts — scoring logic, imports no test framework
 src/eval/        scorers.ts adapts grading/ to evalite; models.ts is the shared
                  fan-out/budget/context; *.eval.ts are the suites
                  (*.model.eval.ts run the model)
-src/fixtures/    synthetic input + per-layer sample artifacts, as typed consts
+src/fixtures/    input.ts (BriefInput + the inline corpus, the checks' input type)
+                 + synthetic input and per-layer sample artifacts, as typed consts
 src/worker/      the long-running process — main.ts is wiring; runtime/ owns the
                  process lifecycle, scheduling/ the reconcile loop, delivery/ a
-                 fired run; config.ts and db.ts sit at the top with main.ts
+                 fired run
 src/scripts/     one-off dev CLIs (not part of any eval) + runScript
 ```
 
@@ -50,10 +62,11 @@ every call site; everywhere else consumers import the module they mean.
 | `pnpm eval` | `evalite run scorers.eval.ts` — offline scorer regression, free, no key. |
 | `pnpm eval:models` | `evalite run model.eval` — every `*.model.eval.ts`, across every model in `llm/models.ts`. Costs money. |
 | `pnpm eval:watch` | Evalite watch mode + UI on `localhost:3006`. |
-| `pnpm agent` | `src/scripts/agent-run.ts` — orchestrator end-to-end on the synthetic fixture, saving to `.artifacts/`. |
+| `pnpm agent` | `src/scripts/agent-run.ts` — orchestrator end-to-end on the synthetic fixture, saving to `.artifacts/`. Uses `fixtureProvider`, so it needs no database. |
+| `pnpm probe-corpus "<query>"` | What `search_news` would return for a query against the live corpus (`--window`, `--limit`, `--fetch`). Costs one embedding — fractions of a cent — and is the way to tell a bad brief caused by *retrieval* from one caused by the prompt. |
 | `pnpm worker` | The scheduled worker. Long-running; needs Postgres and the `TELEGRAM_*` variables. |
 | `pnpm worker --once <id>` | Fire one schedule immediately and exit — the whole delivery path without waiting for a cron hour. Run it in `apps/agent`; the root script goes through Turbo, which swallows the flag. |
-| `pnpm seed-schedule --cron "0 7 * * *"` | Write a schedule row (`--timezone`, `--edition`, `--user` optional), until the admin API owns them. Re-running **rewrites** the row for that `(user, edition)` rather than adding a second one that would bill every brief twice. |
+| `pnpm seed-schedule --cron "0 7 * * *"` | Write a schedule row (`--timezone`, `--edition`, `--user`, `--topics` optional), until the admin API owns them. Re-running **rewrites** the row for that `(user, edition)` rather than adding a second one that would bill every brief twice. `--topics` takes a comma-separated list and adds them to that schedule (existing subjects are skipped, never duplicated) — the only way to create topics without the portal. |
 
 **`worker` is deliberately not called `dev`**, so root `pnpm dev` starts the API
 and the portal without also starting paid LLM scheduling.
@@ -174,10 +187,18 @@ theorised: under the CLI a handler's own `setTimeout` never fires.
 
 ### The corpus seam
 
-`delivery/input.ts` is where a fired run gets its `BriefInput`, and it still returns the
-**synthetic fixture**: only `edition` and `asOf` come from the schedule. Live
-retrieval is its own change with its own eval. Nothing downstream reaches past
-this function for a corpus, so replacing it moves nothing else.
+`delivery/input.ts` is where a fired run gets its `BriefInput`, and **`BriefInput`
+has no `docs` field at all** — the documents live in Postgres and the model
+chooses them through `search_news`. What comes from the schedule is the edition,
+the moment, and the reader's topics, which are one query on a key this function
+already holds. An inline corpus is a *fixture* concept, and lives on
+`fixtures/input.ts`'s `FixtureBriefInput`; see Fixtures.
+
+`delivery/run.ts` passes `corpusProvider({ scheduleId })`, and after a delivered
+brief `delivery/delivered.ts` records which articles were cited. That is what the
+provider's exclusion reads on the next run, so a reader is not told the same story
+twice. It drops an id that no longer resolves rather than raising: an article swept
+between research and delivery must not lose a brief that has already been sent.
 
 `delivery/format.ts` renders a `Brief` as **plain text** — `splitMessage` packs at
 paragraph boundaries with no notion of markup, so a chunk boundary inside an
@@ -356,12 +377,11 @@ schema rather than here.
 
 ## Tools
 
-`tools/news.ts` exposes `search_news` and `fetch_article` over the in-memory
-`SourceDoc[]` from the input. **Search deliberately withholds article bodies** —
-ids, titles and timestamps only — so the model must decide which stories are
-worth a fetch rather than being handed the whole corpus in one turn. `search_news`
-is keyword-scored today; swapping in semantic search (embeddings + pgvector) is an
-implementation change behind the same tool, and nothing else moves.
+`tools/news.ts` exposes `search_news` and `fetch_article` over a **`SourceProvider`**,
+never over an array. **Search deliberately withholds article bodies** — ids, titles
+and timestamps only — so the model must decide which stories are worth a fetch
+rather than being handed the whole corpus in one turn. The model cannot tell which
+provider answered, which is the point.
 
 ## Fixtures
 
@@ -369,6 +389,16 @@ Fixtures are **TypeScript modules exporting typed consts**, not JSON read at
 runtime. Each parses itself with its own Zod schema at module load and carries a
 `satisfies` annotation, so a mistyped key is a compile error and an out-of-bounds
 value fails on import rather than mid-eval.
+
+`fixtures/input.ts` is the one schema of the set that is not an artifact:
+`FixtureBriefInput` is `BriefInput` plus the corpus it is scored against, and it
+is the input type of `grading/checks.ts`, `eval/scorers.ts` and
+`eval/models.ts`'s `layerContext`. **The `docs` are here rather than on
+`BriefInput` because a live run has none**, and `sourceIdsResolve` /
+`numbersGrounded` read them as the full set of what is true: handed a scheduled
+run's input they would not fail, they would score every figure ungrounded and
+every citation invented. A type is what keeps that call from being written —
+`buildBriefInput`'s result no longer fits a check's signature.
 
 The payoff is comments: `brief-hallucinated.ts` annotates each deliberate defect
 with the check in `grading/checks.ts` it trips, and a comment cannot leak into a
@@ -423,18 +453,22 @@ discriminating and every model eval on it is meaningless.
 
 ## Config
 
-`src/config.ts` is where the **core** reads the environment:
-`loadAgentConfig()` selects `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` from
-`@personal-agent/env` and validates both through the shared `loadEnv`, so a
-missing key and a malformed model id are reported together, keyed by their real
-variable names. It is called lazily — from the memoized client factories and from
-`resolveModel()` — so importing the agent core never requires a key, and
-`resolveModel(override)` short-circuits before the load.
+`src/config.ts` holds **three** specs, and the split is the whole offline story:
 
-`src/worker/config.ts` is the worker's own, selecting `DATABASE_URL` alone — kept
-separate so importing the core still requires no database. The `TELEGRAM_*`
-variables stay in `packages/telegram`'s loader; the worker never re-declares
-them.
+- `loadAgentConfig()` — `OPENROUTER_API_KEY` + `OPENROUTER_MODEL`. Called lazily
+  from the memoized client factory and `resolveModel()`, so importing the core
+  never requires a key.
+- `loadEmbeddingConfig()` — `OPENROUTER_API_KEY` + `OPENROUTER_EMBEDDING_MODEL` +
+  `OPENROUTER_EMBEDDING_DIMENSIONS`. The **same three** `apps/ingest` selects,
+  because a query must land in the vector space the documents were written into.
+  They are declared once in `packages/env`, which is what keeps the two agreeing.
+- `loadDatabaseConfig()` — `DATABASE_URL` alone, read only by `src/db.ts`.
+
+Keeping the third separate is what lets every eval, every unit test and
+`pnpm agent` run on a machine with no Postgres. `src/worker/config.ts` no longer
+exists; the worker reads `src/db.ts` like the corpus does, so there is one Prisma
+client per process rather than two. The `TELEGRAM_*` variables stay in
+`packages/telegram`'s loader; nothing here re-declares them.
 
 `vite.config.ts` loads the repo-root `.env` via `envDir` — evalite does not read
 `.env` on its own, and already-set variables still take precedence. `envPrefix`

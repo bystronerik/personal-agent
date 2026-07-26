@@ -1,3 +1,4 @@
+import type { FixtureBriefInput } from '../fixtures/input'
 import {
   type Brief,
   type BriefInput,
@@ -80,7 +81,10 @@ const storyProse = (stories: Story[]): string[] =>
 // implementation powers both a per-layer check and the end-to-end check. ---
 
 /** Every cited source id must exist in the input. */
-function sourceIdsResolve(stories: Story[], input: BriefInput): CheckResult {
+function sourceIdsResolve(
+  stories: Story[],
+  input: FixtureBriefInput,
+): CheckResult {
   const knownIds = new Set(input.docs.map((d) => d.id))
   const details: string[] = []
   let cited = 0
@@ -108,7 +112,10 @@ function sourceIdsResolve(stories: Story[], input: BriefInput): CheckResult {
  * ("3rd month in a row") and rounded ones ("about 4%" from "4.25%"), which is
  * why this contributes a score instead of gating.
  */
-function numbersGrounded(prose: string[], input: BriefInput): CheckResult {
+function numbersGrounded(
+  prose: string[],
+  input: FixtureBriefInput,
+): CheckResult {
   const sourceValues = new Set(
     input.docs.flatMap((d) => [
       ...sourceValuesIn(d.title),
@@ -205,7 +212,7 @@ function echoesInput(
   ])
 }
 
-export type Check<T> = (artifact: T, input: BriefInput) => CheckResult
+export type Check<T> = (artifact: T, input: FixtureBriefInput) => CheckResult
 
 /** Tags a check closure with the stable name it reports, so scorers can label it. */
 type NamedCheck<T> = Check<T> & { checkName: string }

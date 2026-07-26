@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  type BriefInput,
-  BriefInputSchema,
-  type Prediction,
-  PredictionSchema,
-} from '../schema'
+  type FixtureBriefInput,
+  FixtureBriefInputSchema,
+} from '../fixtures/input'
+import { type Prediction, PredictionSchema } from '../schema'
 import {
   type CheckResult,
   claimedValuesIn,
@@ -66,8 +65,8 @@ describe('sourceValuesIn', () => {
   })
 })
 
-const inputWith = (body: string): BriefInput =>
-  BriefInputSchema.parse({
+const inputWith = (body: string): FixtureBriefInput =>
+  FixtureBriefInputSchema.parse({
     edition: 'morning',
     asOf: '2026-07-20T06:00:00Z',
     docs: [

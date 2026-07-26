@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util'
 
+import { agentDb, disconnectDb } from '../db'
 import { EditionSchema } from '../schema'
-import { disconnectDb, workerDb } from '../worker/db'
 import {
   isCronExpression,
   isTimeZone,
@@ -21,15 +21,22 @@ const { values } = parseArgs({
     cron: { type: 'string' },
     timezone: { type: 'string' },
     edition: { type: 'string', default: 'morning' },
+    topics: { type: 'string' },
   },
   allowPositionals: false,
 })
+
+const subjectsOf = (topics: string | undefined): string[] =>
+  (topics ?? '')
+    .split(',')
+    .map((subject) => subject.trim())
+    .filter((subject) => subject.length > 0)
 
 await runScript(async () => {
   const cron = values.cron
   if (!cron) {
     throw new Error(
-      'Usage: pnpm seed-schedule --cron "0 7 * * *" [--timezone Europe/Prague] [--edition morning] [--user dev]',
+      'Usage: pnpm seed-schedule --cron "0 7 * * *" [--timezone Europe/Prague] [--edition morning] [--user dev] [--topics "rates,semiconductors"]',
     )
   }
   if (!isCronExpression(cron)) {
@@ -49,7 +56,7 @@ await runScript(async () => {
     )
   }
   const userId = values.user ?? DEFAULT_USER_ID
-  const db = workerDb()
+  const db = agentDb()
 
   try {
     await db.user.upsert({
@@ -76,9 +83,24 @@ await runScript(async () => {
           data: { userId, cron, timezone, edition: edition.data },
         })
 
+    const subjects = subjectsOf(values.topics)
+    if (subjects.length > 0) {
+      await db.topic.createMany({
+        data: subjects.map((subject) => ({
+          scheduleId: schedule.id,
+          userId,
+          subject,
+        })),
+        skipDuplicates: true,
+      })
+    }
+
     console.log(
       `${existing ? 'Updated' : 'Seeded'} ${edition.data} schedule ${schedule.id} — ${cron} (${timezone}) for user ${userId}`,
     )
+    if (subjects.length > 0) {
+      console.log(`Topics: ${subjects.join(', ')}`)
+    }
     console.log(`Fire it now with: pnpm worker -- --once ${schedule.id}`)
   } finally {
     await disconnectDb()

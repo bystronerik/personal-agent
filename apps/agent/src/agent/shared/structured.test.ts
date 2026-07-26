@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { syntheticNews } from '../../fixtures/synthetic-news'
 import type { LoopClient } from '../../llm/client'
 import type { ResponseSchema } from '../../llm/decode'
+import { fixtureProvider } from '../../sources/fixture'
 import { createBlackboard } from './blackboard'
 import { createPool, DEFAULT_BUDGET } from './budget'
 import type { AgentContext } from './run-context'
@@ -41,6 +42,7 @@ const contextWith = (client: LoopClient, sessionId: string): AgentContext => ({
   pool: createPool(),
   budget: DEFAULT_BUDGET,
   client,
+  sources: fixtureProvider([]),
   sessionId,
 })
 
