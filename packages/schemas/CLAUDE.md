@@ -38,10 +38,51 @@ a dependency.
   restates the next line — `// load the config` above `loadConfig()` is the
   failure mode. If a variable needs a comment, rename the variable.
 
+## Two schemas that break the `.meta({ id })` rule, and why
+
+`schedules/` carries the only exceptions, both in `EditionSchema`'s neighbourhood:
+
+- **`EditionSchema` has no id.** `apps/agent` shares it — the API writes the
+  `edition` column, the worker parses it — and feeds its schemas to
+  `z.toJSONSchema` for structured outputs. An id makes zod emit `$ref` into
+  `$defs`, which strict mode rejects and the agent's `stripUnsupported` does not
+  flatten. The id is applied where the API uses it (`ScheduleSchema`), so the
+  component is still named `Edition` and the agent still gets the enum inline.
+  `apps/agent/src/llm/json-schema.test.ts` is what stops that regressing.
+- **`CronExpressionSchema` and `TimeZoneSchema` have none either**, being field
+  validators rather than components; an id would put a bare string in the document
+  as a schema of its own.
+
+`CronExpressionSchema` is also the one schema here whose contract is
+**one-directional**: it accepts a deliberate subset of what croner parses (five
+fields, `* , - /`, numeric or named values — no seconds field, `L`, `W`, `#`, `+`,
+`?` or `@daily`). This package may not depend on croner, so the property that
+matters — *everything this accepts, croner can fire* — is pinned by a test in
+`apps/agent`, the only workspace holding both. `apps/server` re-checks with croner
+before writing, so drift costs a rejected request rather than a schedule that
+silently never runs.
+
 ## What lives here
 
-`topics/` is the resource. `auth/` is `AuthenticatedUser` — the body of `GET /me`
-and the shape `@CurrentUser()` hands a handler. `health/` is `Health`, whose `db`
+`topics/` is the resource. `schedules/` is the resource that owns it — `Schedule`
+(with its topics embedded, and a `nextRunAt` the API computes rather than stores),
+`CreateSchedule`, `UpdateSchedule`, and `MAX_SCHEDULES_PER_USER`, which is here
+rather than in `apps/server` so the portal can stop at the cap instead of
+discovering it from a 409. `auth/` is `AuthenticatedUser` — the body of `GET /me`
+and the shape `@CurrentUser()` hands a handler. `users/` is `UserPreferences`,
+the body of `GET`/`PATCH /me/preferences`: **separate from `auth/` on purpose**,
+because `AuthenticatedUser` is derived from the access token on every request
+while a preference is a database read, and folding one into the other would put
+a query on the auth path. Its `Locale` is a **closed enum** rather than a BCP-47
+string, so `apps/client` can derive its supported languages from
+`LocaleSchema.options` instead of keeping a second list; `DEFAULT_LOCALE` beside
+it mirrors the column default in `packages/db`. `Theme` is the same shape
+for the portal's theme, and its members are **Mantine's own `light | dark |
+auto`** — the portal hands a stored value straight to `setColorScheme`, so
+naming the third one `system` would buy a mapping layer and nothing else. The
+**field** is `theme` rather than Mantine's `colorScheme` because the contract is
+named for what it means, not for the library that renders it; the members stay
+Mantine's precisely because those *are* handed over unmapped. `health/` is `Health`, whose `db`
 is a closed set rather than a probe message, because the route is public and a
 driver error names the host, port, database and user.
 

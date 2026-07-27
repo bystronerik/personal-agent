@@ -11,6 +11,8 @@ datasource db {
 
 model User {
   id        String     @id
+  locale    String     @default("en")
+  theme     String     @default("auto")
   schedules Schedule[]
 
   @@map("users")

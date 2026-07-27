@@ -36,8 +36,8 @@ export const AUTH0_AUDIENCE = envVar(
 
 // --- API server (apps/server) ---
 
-const DEFAULT_API_PORT = 3000
-const DEFAULT_CORS_ORIGIN = 'http://localhost:5173'
+const DEFAULT_API_PORT = 3001
+const DEFAULT_CORS_ORIGIN = 'http://localhost:3000'
 
 export const API_PORT = envVar(
   'API_PORT',

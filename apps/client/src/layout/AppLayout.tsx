@@ -1,7 +1,9 @@
 import { AppShell, Burger, Group, Text } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { Outlet } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 
+import { usePreferenceSync } from '../preferences/usePreferences'
 import { AppNavbar } from './AppNavbar'
 
 const NAVBAR_WIDTH = 260
@@ -14,6 +16,8 @@ const MOBILE_HEADER_HEIGHT = 56
  */
 export function AppLayout() {
   const [opened, { toggle, close }] = useDisclosure(false)
+  const { t } = useTranslation()
+  usePreferenceSync()
 
   return (
     <AppShell
@@ -31,9 +35,9 @@ export function AppLayout() {
             opened={opened}
             onClick={toggle}
             size="sm"
-            aria-label="Toggle navigation"
+            aria-label={t('nav.toggle')}
           />
-          <Text fw={600}>Personal Agent</Text>
+          <Text fw={600}>{t('app.name')}</Text>
         </Group>
       </AppShell.Header>
 

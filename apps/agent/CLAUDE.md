@@ -109,6 +109,19 @@ last said about each row, so a broken one is reported when it breaks and when th
 problem *changes* — not every half minute, which would bury the lines that mean
 something. The `edition` column is a plain string in Postgres, so that parse is
 the only thing between a typo and a run that cannot assemble a brief.
+**`EditionSchema` is no longer declared here** — `schema/common.ts` re-exports it
+from `@personal-agent/schemas`, because the admin API writes that column and this
+parse reads it. Two consequences: this package now depends on the schemas package
+(zod only, and rolldown inlines it), and the shared enum must stay free of
+`.meta({ id })`, since an id makes `z.toJSONSchema` emit `$ref`/`$defs` that strict
+structured outputs reject and `stripUnsupported` does not flatten.
+`llm/json-schema.test.ts` asserts the enum still reaches the wire inline.
+
+`scheduling/cron-subset.test.ts` is here for the mirror-image reason: the API's
+cron grammar lives in `packages/schemas`, which may not depend on croner, and this
+is the only workspace holding both. It pins the one-directional contract —
+whatever the API accepts, croner parses.
+
 `scheduling/pattern-checks.ts` holds the two refinements it uses; `isTimeZone`
 exists because croner accepts an unknown `timezone` *silently* — an invalid zone
 would fire at some unintended hour instead of being rejected.

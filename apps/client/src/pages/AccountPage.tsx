@@ -1,38 +1,35 @@
 import { useAuth0 } from '@auth0/auth0-react'
 import {
-  Alert,
   Avatar,
   Card,
   Group,
-  Loader,
+  SegmentedControl,
+  Select,
   Stack,
   Text,
-  Title,
 } from '@mantine/core'
+import { useTranslation } from 'react-i18next'
 
-import { useGetMe } from '../generated/api/me/me'
-import { describe } from '../lib/errors'
+import { LocaleSchema, ThemeSchema } from '@personal-agent/schemas/users'
+
+import { useLocale } from '../i18n/useLocale'
+import { useTheme } from '../preferences/useTheme'
+
+const CONTROL_WIDTH = 200
 
 export function AccountPage() {
   const { user } = useAuth0()
-  const me = useGetMe()
-
-  const identity = me.data?.status === 200 ? me.data.data : undefined
+  const { t } = useTranslation()
+  const locale = useLocale()
+  const theme = useTheme()
 
   return (
     <Stack maw={640}>
-      <div>
-        <Title order={2}>Account</Title>
-        <Text c="dimmed" size="sm">
-          The identity the brief runs as.
-        </Text>
-      </div>
-
       <Card withBorder padding="md" radius="md">
         <Group wrap="nowrap">
           <Avatar src={user?.picture} radius="xl" />
           <Stack gap={2}>
-            <Text fw={500}>{user?.name ?? 'Signed in'}</Text>
+            <Text fw={500}>{user?.name ?? t('account.signedIn')}</Text>
             <Text size="sm" c="dimmed">
               {user?.email}
             </Text>
@@ -40,26 +37,40 @@ export function AccountPage() {
         </Group>
       </Card>
 
-      {me.isPending && <Loader />}
+      <Card withBorder padding="md" radius="md">
+        <Stack gap="md">
+          <Group justify="space-between" wrap="nowrap">
+            <Text size="sm">{t('account.language')}</Text>
+            <Select
+              w={CONTROL_WIDTH}
+              allowDeselect={false}
+              checkIconPosition="right"
+              disabled={locale.isSaving}
+              value={locale.current}
+              data={LocaleSchema.options.map((value) => ({
+                value,
+                label: t(`languages.${value}`),
+              }))}
+              onChange={(value) =>
+                value && locale.change(LocaleSchema.parse(value))
+              }
+            />
+          </Group>
 
-      {me.isError && (
-        <Alert color="red" title="Could not load your account">
-          {describe(me.error)}
-        </Alert>
-      )}
-
-      {identity && (
-        <Card withBorder padding="md" radius="md">
-          <Stack gap={4}>
-            <Text size="sm" c="dimmed">
-              User ID the API sees
-            </Text>
-            <Text ff="monospace" size="sm">
-              {identity.userId}
-            </Text>
-          </Stack>
-        </Card>
-      )}
+          <Group justify="space-between" wrap="nowrap">
+            <Text size="sm">{t('account.theme')}</Text>
+            <SegmentedControl
+              disabled={theme.isSaving}
+              value={theme.current}
+              data={ThemeSchema.options.map((value) => ({
+                value,
+                label: t(`themes.${value}`),
+              }))}
+              onChange={(value) => theme.change(ThemeSchema.parse(value))}
+            />
+          </Group>
+        </Stack>
+      </Card>
     </Stack>
   )
 }

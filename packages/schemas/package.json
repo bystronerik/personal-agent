@@ -29,9 +29,17 @@
       "types": "./src/health/index.ts",
       "default": "./src/health/index.ts"
     },
+    "./schedules": {
+      "types": "./src/schedules/index.ts",
+      "default": "./src/schedules/index.ts"
+    },
     "./topics": {
       "types": "./src/topics/index.ts",
       "default": "./src/topics/index.ts"
+    },
+    "./users": {
+      "types": "./src/users/index.ts",
+      "default": "./src/users/index.ts"
     }
   },
   "files": ["src"]

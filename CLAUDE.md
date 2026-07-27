@@ -53,6 +53,7 @@ Only what spans packages. Internals live in each workspace's own `CLAUDE.md`.
 apps/client ──(orval codegen from apps/server openapi.yaml)──> apps/server ──┐
      └──────────────> packages/schemas <──────────────┘                      ├──> packages/db ──> Postgres
 apps/agent (top-of-graph scheduled worker) ──> packages/telegram             ─┤
+apps/agent ──> packages/schemas (Edition alone — the schedules API writes it) ─┤
 apps/ingest (top-of-graph corpus poller)                                     ─┤
 apps/agent, apps/ingest ──> packages/embedding                               ─┘
 ```
@@ -75,6 +76,9 @@ Every workspace dependency is one-directional:
   objects to validate a form before it becomes a request. Depends on nothing but
   `zod` — which every consumer must resolve to the *same* copy, or schemas stop
   validating silently (see [packages/schemas](packages/schemas/CLAUDE.md)).
+  **`apps/agent` is the third consumer, for `EditionSchema` alone**: the admin API
+  writes the `edition` column and the worker parses it, so a value one side admits
+  and the other rejects is a schedule that never fires.
 - **`packages/env` is the single home for environment loading.** All five other
   workspaces depend on it; it depends on nothing but `zod`. The browser reaches it
   **only** through the `@personal-agent/env/client` subpath, which never imports the
@@ -91,9 +95,10 @@ Every workspace dependency is one-directional:
   rather than one with a flag.
 - **`apps/agent` and `apps/ingest` are both top-of-graph** — nothing imports
   either, so their own `build` (`tsc && rolldown`) is what catches the ESM and
-  type mistakes a consumer otherwise would. **Schedules are seeded by hand until
-  an admin API owns them** (`pnpm seed-schedule`), so nothing yet writes one over
-  HTTP. Feeds need no seeding at all — `apps/ingest` upserts its own rows from
+  type mistakes a consumer otherwise would. **A reader now writes their own
+  schedules over HTTP** — `apps/client` drives the `schedules` routes, and
+  `pnpm seed-schedule` is the offline path that remains for a fresh database.
+  Feeds need no seeding at all — `apps/ingest` upserts its own rows from
   the static list on every boot.
 
 Nothing is compiled ahead of time; the ordering that matters is codegen, and it
@@ -102,6 +107,14 @@ is expressed as three separate Turbo tasks rather than one: `generate:db`
 (orval). `build` and `start:dev` both declare `["^generate:db",
 "^generate:spec", "generate:api"]`, so generated code is never stale and no task
 depends on codegen it does not use. **Nothing generated is committed.**
+
+The chain is also expressed *between* the tasks, and it has to be: every codegen
+input here is generated and gitignored, so it can never be part of the consuming
+task's input hash. `generate:spec` declares `^generate:db` (the emit boots the
+Nest app, which reaches the Prisma client) and `generate:api` declares
+`@personal-agent/server#generate:spec`. Miss either edge and the task is a cache
+hit against a stale input — a **FULL TURBO that regenerates nothing** after a
+contract change, which fails later as a type error in `apps/client` or not at all.
 
 ## Commands
 

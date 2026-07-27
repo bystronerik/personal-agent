@@ -1,6 +1,6 @@
 # `@personal-agent/server`
 
-The NestJS admin API — auth, config, health, topics. Depends on
+The NestJS admin API — auth, config, health, schedules, topics, user preferences. Depends on
 `@personal-agent/db` for all database access and on `@personal-agent/schemas` for
 the contract it validates and publishes. Its `src/generated/openapi.yaml` is the
 codegen input for `apps/client`. See the [root CLAUDE.md](../../CLAUDE.md) for the
@@ -114,6 +114,34 @@ guarantees it exists before any handler can write one, so there is no ordering t
 get wrong. A `sub` seen once is remembered in-process, making this one `upsert`
 per user per process rather than a query per request — a row deleted out of band
 stays uncreated until restart, which is the trade accepted for it.
+
+## Schedules
+
+`schedules/` owns the rows the brief worker reads, so two of its rules exist for
+things a type cannot catch:
+
+- **croner has the last word on a pattern.** The request already passed
+  `CronExpressionSchema`, which accepts a subset of croner's grammar and cannot
+  import croner itself; `assertFirable` runs `new CronPattern()` before any write,
+  so a pattern the worker cannot fire is unstorable no matter how the subset
+  drifts. Note which layer rejects what: `0 0 L * *` is croner-legal and stopped by
+  the pipe, `5/2 * * * *` is stopped by both.
+- **`nextRunAt` is computed, never stored.** There is no such column — the worker
+  keeps its jobs in croner, in memory — so the API answers "when is my next brief?"
+  by building a `Cron` per row. Built with no handler it computes the occurrence and
+  arms nothing.
+
+`edition` reads back through `EditionSchema.catch('morning')` for the same reason
+`locale` does: it is a plain column, and a row seeded by hand must not turn a list
+request into a 500. **The cap (`MAX_SCHEDULES_PER_USER`) is counted inside the
+create transaction and is a guardrail on cost, not a boundary** — two simultaneous
+creates can still cross it under default isolation.
+
+Ownership is the `where` clause, never a check after the read: `deleteMany`/
+`findFirst` scoped by `userId`, and `update` through the `id_userId` compound
+unique that `@@unique([id, userId])` provides. An id belonging to someone else
+therefore reads as missing rather than forbidden, which is also what the topics
+module does one level down.
 
 ## Config
 

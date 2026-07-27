@@ -1,4 +1,6 @@
 export * from './auth/index'
 export * from './common/index'
 export * from './health/index'
+export * from './schedules/index'
 export * from './topics/index'
+export * from './users/index'

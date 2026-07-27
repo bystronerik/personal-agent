@@ -7,10 +7,11 @@
       "env": ["VITE_*"]
     },
     "generate:spec": {
-      "dependsOn": ["^generate:api"],
+      "dependsOn": ["^generate:db"],
       "outputs": ["src/generated/openapi.yaml"]
     },
     "generate:api": {
+      "dependsOn": ["^generate:spec"],
       "outputs": ["src/generated/**"]
     },
     "generate:db": {

@@ -4,20 +4,14 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 
-import { Prisma, type Topic as TopicRow } from '@personal-agent/db'
+import { Prisma } from '@personal-agent/db'
 import { ErrorCode } from '@personal-agent/schemas/common'
 import type { Topic } from '@personal-agent/schemas/topics'
 
 import { PrismaService } from '../prisma/prisma.service'
+import { toTopic } from './topic.mapper'
 
 const UNIQUE_VIOLATION = 'P2002'
-
-const toTopic = (row: TopicRow): Topic => ({
-  id: row.id,
-  scheduleId: row.scheduleId,
-  subject: row.subject,
-  createdAt: row.createdAt.toISOString(),
-})
 
 @Injectable()
 export class TopicsService {

@@ -1,34 +1,27 @@
 import { useAuth0 } from '@auth0/auth0-react'
-import {
-  Alert,
-  Button,
-  Center,
-  Loader,
-  Paper,
-  Stack,
-  Text,
-  Title,
-} from '@mantine/core'
+import { Alert, Center, Loader } from '@mantine/core'
 import { RouterProvider } from '@tanstack/react-router'
+import { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { AuthTokenBridge } from './auth/AuthTokenBridge'
 import { router } from './router'
 
 export function App() {
   const { isLoading, isAuthenticated, error, loginWithRedirect } = useAuth0()
+  const { t } = useTranslation()
+  const redirecting = useRef(false)
 
-  if (isLoading) {
-    return (
-      <Center h="100vh">
-        <Loader />
-      </Center>
-    )
-  }
+  useEffect(() => {
+    if (isLoading || error || isAuthenticated || redirecting.current) return
+    redirecting.current = true
+    void loginWithRedirect()
+  }, [isLoading, error, isAuthenticated, loginWithRedirect])
 
   if (error) {
     return (
       <Center h="100vh" p="md">
-        <Alert color="red" title="Auth0 rejected the sign-in" maw={480}>
+        <Alert color="red" title={t('auth.rejected')} maw={480}>
           {error.message}
         </Alert>
       </Center>
@@ -37,16 +30,8 @@ export function App() {
 
   if (!isAuthenticated) {
     return (
-      <Center h="100vh" p="md">
-        <Paper withBorder p="xl" radius="md" w={360}>
-          <Stack>
-            <Title order={3}>Personal Agent</Title>
-            <Text c="dimmed" size="sm">
-              Sign in to choose what the brief researches.
-            </Text>
-            <Button onClick={() => loginWithRedirect()}>Log in</Button>
-          </Stack>
-        </Paper>
+      <Center h="100vh">
+        <Loader />
       </Center>
     )
   }

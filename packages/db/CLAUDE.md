@@ -80,10 +80,16 @@ online still describes 6:
 `PrismaClient` and the model types re-exported from the generated client, so
 consumers never reach into `src/generated/` themselves.
 
-`User` is **structural** — keyed by the Auth0 `sub` itself, with no generated id
-and no other columns. It exists so user-scoped tables reference something real
-instead of repeating a dangling string; it holds no profile data, and the API
-writes a row the first time it sees a `sub`. `pnpm seed-schedule` upserts one,
+`User` is keyed by the Auth0 `sub` itself, with no generated id. It exists so
+user-scoped tables reference something real instead of repeating a dangling
+string, and the API writes a row the first time it sees a `sub`. It still holds
+no profile data — Auth0 owns that — but it is no longer column-free: `locale` and
+`theme` are the portal's stored language and theme preferences, so both
+follow a reader across devices. Their `"en"` and `"auto"` defaults **duplicate
+`DEFAULT_LOCALE` and `DEFAULT_THEME` in `packages/schemas`**, which no
+migration can import; both values are validated on read, not by the column, so a
+value dropped from `LocaleSchema` or `ThemeSchema` degrades to the default
+rather than failing the request. `pnpm seed-schedule` upserts one,
 because on a fresh database nothing has called the auth path that would.
 
 `Schedule` splits into **intent** the owner sets (`cron`, `timezone`, `edition`,

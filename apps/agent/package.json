@@ -21,6 +21,7 @@
     "@personal-agent/db": "workspace:*",
     "@personal-agent/embedding": "workspace:*",
     "@personal-agent/env": "workspace:*",
+    "@personal-agent/schemas": "workspace:*",
     "@personal-agent/telegram": "workspace:*",
     "@prisma/adapter-pg": "^7.9.0",
     "@prisma/client": "^7.9.0",
