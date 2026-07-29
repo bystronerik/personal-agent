@@ -1,111 +1,41 @@
-# `@personal-agent/env`
+# @personal-agent/env
 
-The single home for environment loading: the `blankAsAbsent` rule, the `loadEnv`
-validator, and every variable's name, schema, and default — knowledge that was
-hand-rolled in four packages before this existed. A leaf: it depends on nothing
-but `zod`, and every other workspace depends on it. See the
-[root CLAUDE.md](../../CLAUDE.md) for the workspace-wide picture.
+Each environment variable is declared here one time, with its real name and its Zod
+schema. Every other workspace reads its config through this package. It imports only
+`zod`, and it has no runtime side effects.
 
-## Layout
+## Exports
 
-```
-src/blank.ts         blankAsAbsent — the one copy of "a blank env var is absent"
-src/load.ts          envVar() + loadEnv() — the validator/formatter/throw
-src/server-vars.ts   Node-side variables (DATABASE_URL, AUTH0_*, API_*,
-                     PUBLIC_API_URL, UNSUBSCRIBE_SECRET, OPENROUTER_*,
-                     TELEGRAM_*, RESEND_API_KEY, EMAIL_FROM)
-src/client-vars.ts   browser variables (VITE_*)
-src/index.ts         package root `.`      — loader + server vars
-src/client.ts        subpath `./client`    — loader + client vars only
-```
+- `.` → `src/index.ts`: the loader and all Node-side variables from `server-vars.ts`.
+- `./client` → `src/client.ts`: the loader and the `VITE_*` variables only, from
+  `client-vars.ts`. `apps/client` uses this subpath.
 
-## The mechanism
+The two files are separate so that no server secret can enter the browser bundle. Never
+let `client.ts` import `server-vars.ts`.
 
-`envVar(name, schema)` declares a variable once: its real environment name bound
-to the Zod schema that validates it, with the default living on the schema
-(`.default(3000)`). A consumer assembles a **spec** — an object mapping its own
-field names to those declarations — and hands it to `loadEnv`:
+## Scripts
 
-```ts
-loadEnv({ port: API_PORT, databaseUrl: DATABASE_URL }, { source: process.env, subject: 'The API' })
-```
+`build` runs `tsc` only. There are no tests in this package.
 
-`loadEnv` reads each variable from `source`, runs every value through
-`blankAsAbsent`, validates the lot in one `z.object`, and on failure throws a
-single message listing every problem keyed by the **real variable name** — not the
-consumer's field name.
+## How to add a variable
 
-A consumer that needs a default the others must not get re-wraps the declaration
-rather than reaching into `process.env`:
-`envVar(DATABASE_URL.name, DATABASE_URL.schema.default(…))` in
-`packages/db/prisma.config.ts`. The name and the validation stay shared; only the
-default is local.
+1. Add an `envVar('NAME', schema)` export to `server-vars.ts` or to `client-vars.ts`.
+   Put the default in the schema with `.default()`.
+2. Add the field to the config object of each app that needs it, for example
+   `apps/server/src/config/config.ts`.
+3. Document the name and its purpose in `.env.example`. Do not write a real value there.
+4. Add the name to the related task `env` list in `turbo.json`.
+5. For a `VITE_` variable, also add a static `import.meta.env` read in `apps/client/src/env.ts`.
 
-## Two entry points, and why the split is load-bearing
+## Gotchas
 
-The browser bundle must not carry server-side config. `apps/client` reads
-`import.meta.env`, and Vite only inlines `VITE_`-prefixed keys — but that alone
-would still bundle the *definitions* (regexes, defaults, messages) of every server
-variable if the client imported the package root, because a single re-export
-barrel is not reliably tree-shaken. So the boundary is **structural, not
-tree-shaking-dependent**:
-
-- **`.`** (`index.ts`) re-exports the loader + `server-vars`. Node consumers use this.
-- **`./client`** (`client.ts`) re-exports the loader + `client-vars` and **never
-  imports `server-vars`**. `apps/client` imports only from here, so a server
-  variable's definition cannot reach the browser bundle even by mistake.
-
-`apps/client/src/env.ts` reads each value with an explicit static
-`import.meta.env.VITE_*` access and passes them as the `source` — no bare
-`import.meta.env`, no dynamic index — so only `VITE_` names ever appear in browser
-code, and the values survive a production build.
-
-## Runtime-agnostic by construction
-
-`loadEnv` takes `source` as an argument and the package references `process`
-nowhere. Node callers pass `process.env`; the browser passes statically-read
-`import.meta.env` values. That is what lets one package serve both.
-
-## The shape every consumer has
-
-A Node consumer declares its spec in `<workspace>/src/config.ts` and exports
-`load<Subject>Config(source: NodeJS.ProcessEnv = process.env)` —
-`loadApiConfig`, `loadTelegramConfig`, `loadAgentConfig`. Taking `source` as a
-defaulted parameter rather than reaching for `process.env` inside is what keeps
-each loader testable; `config.ts` is the name because `env.ts` collides with the
-*other* thing a workspace calls env (`apps/server/src/env-file.ts`, a dotenv
-side-effect). `apps/server`'s lives at `src/config/config.ts`, next to the Nest
-module that provides it.
-
-`apps/client` is the one exception, and a justified one: a browser module has no
-`process.env` to inject and must fail at import, so `src/env.ts` is an eager
-module-level `export const env = loadEnv(…)`.
-
-## Three variables whose names mislead
-
-- **`PUBLIC_API_URL` is not `CORS_ORIGIN`.** The first is where the API answers
-  from the public internet — what `apps/agent` builds an unsubscribe link
-  against, and the one host a mail client reaches with no session. The second is
-  the *portal*, and is what the API redirects that link to. Setting one to the
-  other's value produces links that 404 rather than an error at boot.
-- **`UNSUBSCRIBE_SECRET` is read by two processes**, `apps/server` and
-  `apps/agent`, because one signs what the other verifies. Giving them different
-  values makes every link in every delivered brief invalid, silently.
-- **`TELEGRAM_CHAT_ID` no longer addresses a brief.** Delivery reads
-  `users.telegram_chat_id`; this variable survives for the `telegram:*` dev
-  scripts alone. Its regex and `TelegramChatIdSchema` in `packages/schemas` are
-  deliberately separate copies now — the same grammar, but no longer one
-  contract.
-
-## Adding or changing a variable
-
-Declare it once in `server-vars.ts` or `client-vars.ts` (its name, schema, and any
-default), select it into the relevant consumer's spec, and — per the root file —
-declare it in `turbo.json` for any task that reads it.
-
-## Conventions
-
-- **Do not write comments.** Two exceptions: a non-obvious contract a caller
-  would otherwise violate, and genuinely dense logic. Never write a comment that
-  restates the next line — `// load the config` above `loadConfig()` is the
-  failure mode. If a variable needs a comment, rename the variable.
+- `blankAsAbsent` treats `NAME=` in `.env` as absent, so the value falls through to the
+  schema default. Route every read through the loader, and this rule stays in one place.
+- `loadEnv` collects all problems into one message that is keyed by the real variable
+  name. Do not replace it with a per-variable read.
+- A default belongs on the shared declaration only when it is correct everywhere.
+  `packages/db/prisma.config.ts` adds its own default for `DATABASE_URL` on purpose, so
+  that `apps/server` still fails at boot when the variable is missing.
+- This package does not read a `.env` file. Each process does that itself: `apps/server`
+  through `src/env-file.ts`, the CLI scripts through `--env-file-if-exists`, and the
+  Vite apps through `envDir`.

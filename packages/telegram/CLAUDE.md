@@ -1,141 +1,35 @@
-# `@personal-agent/telegram`
+# @personal-agent/telegram
 
-A thin delivery layer over [grammY](https://grammy.dev) for sending the brief —
-one of **two** channels now, beside [`packages/email`](../email/CLAUDE.md), which
-a reader chooses between on the account page. Its only workspace dependency is
-`@personal-agent/env`; its one consumer is `apps/agent`'s worker, which imports it
-from `src/worker/delivery/deliver.ts` — the core never touches it. See the
-[root CLAUDE.md](../../CLAUDE.md) for the workspace-wide picture.
+The Telegram Bot API client. `src/index.ts` exports `sendMessage()`, `getUpdates()`,
+`splitMessage()`, `PartialSendError` and the two config loaders. Only `apps/agent`
+imports it. It imports `packages/env`.
 
-`src/index.ts` is the public surface (`sendMessage`, the two config loaders,
-`splitMessage`). It exists because a consumer does: before the worker there was
-nothing to export to, and so no `exports` map.
+## Scripts
 
-grammY owns the transport, the response envelope, and error typing. What is left
-here is what grammY has no opinion about: env validation, message splitting, and
-CLI error formatting.
-
-## Commands
-
-| Command | Effect |
+| Script | Effect |
 | --- | --- |
-| `pnpm telegram:send-test` | Send a test message to `TELEGRAM_CHAT_ID`. Needs `.env`. |
-| `pnpm --filter @personal-agent/telegram telegram:send-test --long` | Same, but long enough to exercise the splitter. The root script runs through Turbo, which swallows the flag. |
-| `pnpm telegram:chat-id` | List every chat the bot can currently see, to discover the chat id. |
-| `pnpm test` | Vitest over `splitMessage`. Offline. |
+| `telegram:chat-id` | Print the chat id of each chat that messaged your bot. Message the bot first |
+| `telegram:send-test` | Send a test message. Add `--long` to exercise the splitter |
+| `test` | Vitest. `src/split.test.ts` covers the splitter |
+| `build` | `tsc` only |
 
-Setup order: create a bot with @BotFather → put the token in `.env` → send the
-bot a message → run `pnpm telegram:chat-id` → put the id in `.env` → `pnpm
-telegram:send-test` to confirm. For a group, add the bot as a member first; for
-a channel, make it an admin.
+## Structure
 
-## Layout
+- `src/client.ts` — uses grammY's `Api`, not `Bot`. The client sends only; it runs no
+  update loop and no middleware. `@grammyjs/auto-retry` absorbs a rate limit.
+- `src/split.ts` — packs the text into 4096-character chunks. It prefers a paragraph
+  break, then a line break, then a word break, then a hard cut.
+- `src/config.ts` — `loadBotConnection()` needs the token and the API base.
+  `loadTelegramConfig()` adds `TELEGRAM_CHAT_ID`.
 
-```
-src/index.ts    the public surface consumers import
-src/client.ts   the Api factory + the two methods used
-src/split.ts    splitMessage — the 4096-character cap
-src/config.ts   env → validated config
-src/scripts/    the CLIs above, plus runScript
-```
+## Gotchas
 
-## `Api`, not `Bot`
-
-This package only sends, so `createApi` builds a bare `Api` — no middleware
-stack, no update loop, no `init()` round-trip. `bot.api` *is* an `Api`, so
-handling incoming messages later is additive rather than a rewrite.
-
-`getUpdates` is called raw, without offset tracking, so repeated calls return the
-same backlog. That is what chat-id discovery wants; the grammY-native alternative
-(`bot.on('message')` + `bot.start()`) confirms updates and never terminates on
-its own.
-
-## Errors
-
-grammY raises two kinds, and neither carries the bot token:
-`ApiClientOptions.sensitiveLogs` defaults to `false`, so the library redacts it.
-There is no hand-rolled redaction here any more — but keep the default in mind
-before ever setting `sensitiveLogs: true`, since the token is a path segment of
-every request URL.
-
-- **`GrammyError`** — Telegram answered `ok: false`. The message already names
-  the method, code, and description.
-- **`HttpError`** — the server was unreachable. Its message names only the
-  method; the reason worth reading (ECONNREFUSED, ENOTFOUND, a timeout) is on
-  `.error`, which is why `runScript` unwraps it.
-
-This is coarser than what preceded it: a non-JSON body and a schema mismatch are
-no longer distinct, hand-framed messages. Result validation is gone entirely —
-the generated `grammy/types` are trusted instead.
-
-## Retries
-
-`autoRetry` is installed on every `Api`. It handles 429 `retry_after` and 5xx
-backoff, which is what makes a multi-chunk send safe against the per-chat rate
-limit. Two settings are deliberate:
-
-- `rethrowHttpErrors: true` — the default retries transport failures too, which
-  with `timeoutSeconds: 10` would make an unreachable host take three timeouts
-  before a CLI said anything. Transport failures stay fail-fast.
-- `maxDelaySeconds: 30` — the default caps 5xx backoff at *one hour*. A rate
-  limit longer than 30s should fail loudly rather than park the CLI. Now that
-  delivery *is* a scheduled job, waiting longer would be affordable — but a
-  delivery that fails fast is retried by the worker's catch-up pass, which runs
-  on its reconcile timer and is a better answer than a job parked for an hour, so
-  this stays as it is.
-
-A multi-chunk send that fails after the first chunk raises **`PartialSendError`**
-instead, carrying how many chunks are already in the chat. Retrying such a send
-is not a repair: the reader would see the opening of the brief twice. The count
-is what lets `apps/agent` record that occurrence as delivered rather than
-regenerate a paid brief to repeat it.
-
-## Splitting
-
-Telegram rejects a `text` longer than 4096 UTF-16 code units, and a brief will
-exceed that. grammY has no plugin for it, so `splitMessage` is ours: it packs
-greedily at paragraph boundaries, descends to line then word boundaries for a
-part that will not fit, and hard-cuts only as a last resort — iterating code
-points, so a surrogate pair is never halved.
-
-**It assumes plain text.** A chunk boundary inside an HTML or MarkdownV2 entity
-leaves the tag unclosed and Telegram rejects that chunk with a 400. Adding
-`parse_mode` to `sendMessage` means making the splitter format-aware first.
-
-Chunks are sent sequentially and awaited individually — Telegram preserves order
-per chat only for requests it receives in order.
-
-## The chat is an argument, not configuration
-
-`sendMessage(connection, chatId, text)` takes its destination per call. A brief
-is addressed to `users.telegram_chat_id` — one bot, a chat per reader — so
-`TELEGRAM_CHAT_ID` is no longer where a brief goes, and there is deliberately **no
-fallback to it**: with more than one user, falling back would deliver one
-reader's brief into another's chat. `TelegramConfig` (connection *plus* a chat
-id) survives for `telegram:send-test` alone.
-
-## Config
-
-`loadTelegramConfig()` validates the full config (token, chat id, optional API
-root); `loadBotConnection()` validates only what a call needs — which is now what
-delivery uses, because chat-id discovery is not the only caller that has no chat
-id up front. Each builds its field spec from the
-`TELEGRAM_*` variables in `@personal-agent/env` and validates through the shared
-`loadEnv`, pointing at `.env.example`.
-
-The field is `apiRoot`, matching grammY's vocabulary; the environment variable
-remains `TELEGRAM_API_BASE`. The token and chat id are regex-checked
-(`123456:ABC-…`; a numeric id, negative for groups and channels, or an
-`@public_name`) so a paste error is caught locally rather than as a 401 from
-Telegram.
-
-The CLIs wrap their work in `runScript`, which prints one line and sets a
-non-zero exit code: misconfiguration is the common failure here, and a stack
-trace buries the line that says which variable is missing.
-
-## Conventions
-
-- **Do not write comments.** Two exceptions: a non-obvious contract a caller
-  would otherwise violate, and genuinely dense logic. Never write a comment that
-  restates the next line — `// load the config` above `loadConfig()` is the
-  failure mode. If a variable needs a comment, rename the variable.
+- The chat id is an argument to `sendMessage`, not part of the connection. A delivered
+  brief goes to `users.telegram_chat_id`. `TELEGRAM_CHAT_ID` serves the two dev scripts
+  above and nothing else, and there is no fallback to it.
+- `sendMessage` sends the chunks in sequence. If a later chunk fails, it throws
+  `PartialSendError` with the count already sent. The caller must not retry the whole
+  text, because the reader has the first chunks.
+- The client sets no `parse_mode`. Send plain text. A chunk boundary inside an HTML or
+  MarkdownV2 entity leaves a tag unclosed and Telegram rejects the chunk.
+- `getUpdates` does not track an offset, so repeated calls return the same backlog.
