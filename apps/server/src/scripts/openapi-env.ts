@@ -8,6 +8,9 @@ const PLACEHOLDERS: Record<string, string> = {
   DATABASE_URL: 'postgresql://openapi:openapi@localhost:5432/openapi',
   AUTH0_DOMAIN: 'openapi.invalid',
   AUTH0_AUDIENCE: 'https://openapi.invalid',
+  AUTH0_MANAGEMENT_CLIENT_ID: 'openapi',
+  AUTH0_MANAGEMENT_CLIENT_SECRET: 'openapi',
+  UNSUBSCRIBE_SECRET: 'openapi'.repeat(8),
 }
 
 for (const [name, value] of Object.entries(PLACEHOLDERS)) {

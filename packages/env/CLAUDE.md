@@ -12,7 +12,8 @@ but `zod`, and every other workspace depends on it. See the
 src/blank.ts         blankAsAbsent — the one copy of "a blank env var is absent"
 src/load.ts          envVar() + loadEnv() — the validator/formatter/throw
 src/server-vars.ts   Node-side variables (DATABASE_URL, AUTH0_*, API_*,
-                     OPENROUTER_*, TELEGRAM_*)
+                     PUBLIC_API_URL, UNSUBSCRIBE_SECRET, OPENROUTER_*,
+                     TELEGRAM_*, RESEND_API_KEY, EMAIL_FROM)
 src/client-vars.ts   browser variables (VITE_*)
 src/index.ts         package root `.`      — loader + server vars
 src/client.ts        subpath `./client`    — loader + client vars only
@@ -79,6 +80,22 @@ module that provides it.
 `apps/client` is the one exception, and a justified one: a browser module has no
 `process.env` to inject and must fail at import, so `src/env.ts` is an eager
 module-level `export const env = loadEnv(…)`.
+
+## Three variables whose names mislead
+
+- **`PUBLIC_API_URL` is not `CORS_ORIGIN`.** The first is where the API answers
+  from the public internet — what `apps/agent` builds an unsubscribe link
+  against, and the one host a mail client reaches with no session. The second is
+  the *portal*, and is what the API redirects that link to. Setting one to the
+  other's value produces links that 404 rather than an error at boot.
+- **`UNSUBSCRIBE_SECRET` is read by two processes**, `apps/server` and
+  `apps/agent`, because one signs what the other verifies. Giving them different
+  values makes every link in every delivered brief invalid, silently.
+- **`TELEGRAM_CHAT_ID` no longer addresses a brief.** Delivery reads
+  `users.telegram_chat_id`; this variable survives for the `telegram:*` dev
+  scripts alone. Its regex and `TelegramChatIdSchema` in `packages/schemas` are
+  deliberately separate copies now — the same grammar, but no longer one
+  contract.
 
 ## Adding or changing a variable
 

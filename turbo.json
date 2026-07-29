@@ -25,14 +25,20 @@
         "DATABASE_URL",
         "AUTH0_DOMAIN",
         "AUTH0_AUDIENCE",
+        "AUTH0_MANAGEMENT_CLIENT_ID",
+        "AUTH0_MANAGEMENT_CLIENT_SECRET",
         "API_PORT",
         "CORS_ORIGIN",
+        "PUBLIC_API_URL",
+        "UNSUBSCRIBE_SECRET",
         "VITE_*",
         "OPENROUTER_API_KEY",
         "OPENROUTER_MODEL",
         "TELEGRAM_BOT_TOKEN",
         "TELEGRAM_CHAT_ID",
-        "TELEGRAM_API_BASE"
+        "TELEGRAM_API_BASE",
+        "RESEND_API_KEY",
+        "EMAIL_FROM"
       ]
     },
     "eval": {
@@ -74,6 +80,10 @@
     "telegram:chat-id": {
       "cache": false,
       "env": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_API_BASE"]
+    },
+    "email:send-test": {
+      "cache": false,
+      "env": ["RESEND_API_KEY", "EMAIL_FROM"]
     },
     "test": {
       "outputs": []

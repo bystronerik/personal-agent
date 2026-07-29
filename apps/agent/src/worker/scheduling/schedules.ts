@@ -12,6 +12,7 @@ import { isCronExpression, isTimeZone } from './pattern-checks'
  */
 const ScheduleRowSchema = z.object({
   id: z.string(),
+  userId: z.string(),
   cron: z.string().refine(isCronExpression, 'is not a valid cron expression'),
   timezone: z.string().refine(isTimeZone, 'is not a valid IANA time zone'),
   edition: EditionSchema,
@@ -21,6 +22,8 @@ const ScheduleRowSchema = z.object({
 
 export type ScheduleDefinition = {
   id: string
+  /** Who the brief is addressed to — the delivery channel is a column on them. */
+  userId: string
   cron: string
   timezone: string
   edition: Edition

@@ -1,4 +1,12 @@
-import { Body, Controller, Get, HttpStatus, Patch } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Patch,
+  Post,
+} from '@nestjs/common'
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -54,5 +62,17 @@ export class UsersController {
     @Body() body: UpdateUserPreferencesDto,
   ) {
     return this.users.updatePreferences(user.userId, body)
+  }
+
+  @Post('resume-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ operationId: 'resumeEmailDelivery' })
+  @ZodResponse({
+    status: HttpStatus.OK,
+    type: UserPreferencesDto,
+    description: 'The preferences, with email delivery no longer suspended',
+  })
+  resumeEmail(@CurrentUser() user: AuthenticatedUser) {
+    return this.users.resumeEmail(user.userId)
   }
 }

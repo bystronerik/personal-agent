@@ -1,10 +1,11 @@
 # `@personal-agent/telegram`
 
-A thin delivery layer over [grammY](https://grammy.dev) for sending the brief.
-Its only workspace dependency is `@personal-agent/env`; its one consumer is
-`apps/agent`'s worker, which imports it from `src/worker/delivery/deliver.ts` — the core
-never touches it. See the [root CLAUDE.md](../../CLAUDE.md) for the
-workspace-wide picture.
+A thin delivery layer over [grammY](https://grammy.dev) for sending the brief —
+one of **two** channels now, beside [`packages/email`](../email/CLAUDE.md), which
+a reader chooses between on the account page. Its only workspace dependency is
+`@personal-agent/env`; its one consumer is `apps/agent`'s worker, which imports it
+from `src/worker/delivery/deliver.ts` — the core never touches it. See the
+[root CLAUDE.md](../../CLAUDE.md) for the workspace-wide picture.
 
 `src/index.ts` is the public surface (`sendMessage`, the two config loaders,
 `splitMessage`). It exists because a consumer does: before the worker there was
@@ -104,11 +105,21 @@ leaves the tag unclosed and Telegram rejects that chunk with a 400. Adding
 Chunks are sent sequentially and awaited individually — Telegram preserves order
 per chat only for requests it receives in order.
 
+## The chat is an argument, not configuration
+
+`sendMessage(connection, chatId, text)` takes its destination per call. A brief
+is addressed to `users.telegram_chat_id` — one bot, a chat per reader — so
+`TELEGRAM_CHAT_ID` is no longer where a brief goes, and there is deliberately **no
+fallback to it**: with more than one user, falling back would deliver one
+reader's brief into another's chat. `TelegramConfig` (connection *plus* a chat
+id) survives for `telegram:send-test` alone.
+
 ## Config
 
 `loadTelegramConfig()` validates the full config (token, chat id, optional API
-root); `loadBotConnection()` validates only what a call needs, because chat-id
-discovery runs *before* a chat id exists. Each builds its field spec from the
+root); `loadBotConnection()` validates only what a call needs — which is now what
+delivery uses, because chat-id discovery is not the only caller that has no chat
+id up front. Each builds its field spec from the
 `TELEGRAM_*` variables in `@personal-agent/env` and validates through the shared
 `loadEnv`, pointing at `.env.example`.
 

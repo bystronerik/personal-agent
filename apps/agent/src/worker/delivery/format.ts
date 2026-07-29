@@ -26,6 +26,14 @@ const day = (iso: string, timeZone: string): string =>
   }).format(new Date(iso))
 
 /**
+ * Email's only addition to the rendering. It reads off the same `EDITION_LABEL`
+ * as the body's heading, so a subject line cannot come to say something the
+ * first line of the brief contradicts.
+ */
+export const formatSubject = (brief: Brief, timeZone: string): string =>
+  `${EDITION_LABEL[brief.edition]} · ${day(brief.generatedAt, timeZone)}`
+
+/**
  * The source ids ride along because this rendering is the only one a human
  * reads: without them a headline the model invented is indistinguishable from
  * one it fetched.

@@ -82,7 +82,23 @@ auto`** — the portal hands a stored value straight to `setColorScheme`, so
 naming the third one `system` would buy a mapping layer and nothing else. The
 **field** is `theme` rather than Mantine's `colorScheme` because the contract is
 named for what it means, not for the library that renders it; the members stay
-Mantine's precisely because those *are* handed over unmapped. `health/` is `Health`, whose `db`
+Mantine's precisely because those *are* handed over unmapped.
+
+`users/` is also where **delivery** lives, and it is the one schema here split
+into two shapes rather than one partialled into a patch. `UserPreferences` is
+what a reader may set (`locale`, `theme`, `deliveryChannel`, `telegramChatId`)
+**plus four fields only the server writes** — `email` and `emailVerified` come
+from Auth0, `emailSuspendedAt` and `emailSuspendedReason` from an unsubscribe.
+`UpdateUserPreferences` partials the writable half alone, so a `PATCH` cannot
+advertise a field it may not set. `TelegramChatIdSchema` carries no
+`.meta({ id })` for the same reason `CronExpressionSchema` does not: it is a
+field validator, and an id would put a bare string in the document as a schema of
+its own. **The one rule that cannot live here** is *telegram implies a chat id* —
+a patch setting only the channel is valid against a row that already has one, so
+`apps/server` checks the merged result and answers
+`DELIVERY_TELEGRAM_CHAT_ID_REQUIRED`.
+
+`health/` is `Health`, whose `db`
 is a closed set rather than a probe message, because the route is public and a
 driver error names the host, port, database and user.
 

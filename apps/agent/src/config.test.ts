@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   loadAgentConfig,
   loadDatabaseConfig,
+  loadDeliveryConfig,
   loadEmbeddingConfig,
 } from './config'
 
@@ -30,6 +31,17 @@ describe('the offline split', () => {
 
   it('demands DATABASE_URL only from the loader the corpus uses', () => {
     expect(() => loadDatabaseConfig({})).toThrow(/DATABASE_URL/)
+  })
+
+  /**
+   * Addressing a brief is the worker's job alone. Folding these into
+   * `loadAgentConfig` would make every eval demand a signing secret.
+   */
+  it('demands the unsubscribe secret only from the delivery loader', () => {
+    expect(loadAgentConfig({ OPENROUTER_API_KEY: KEY })).toMatchObject({
+      apiKey: KEY,
+    })
+    expect(() => loadDeliveryConfig({})).toThrow(/UNSUBSCRIBE_SECRET/)
   })
 
   /** A blank reaches `.default()` as absent — see packages/env. */

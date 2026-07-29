@@ -5,8 +5,8 @@ tools), its eval harness, and the long-running process that fires briefs on the
 schedules in Postgres and delivers them. See the
 [root CLAUDE.md](../../CLAUDE.md) for the constraints this exists to satisfy.
 
-`src/worker/` owns the **process**: croner, signals, Telegram, the reconcile loop.
-It is no longer the only part that reaches Postgres — **`src/sources/corpus.ts`
+`src/worker/` owns the **process**: croner, signals, the two delivery channels,
+the reconcile loop. It is no longer the only part that reaches Postgres — **`src/sources/corpus.ts`
 does too**, deliberately, because retrieval is the agent's own job and not the
 scheduler's.
 
@@ -64,7 +64,7 @@ every call site; everywhere else consumers import the module they mean.
 | `pnpm eval:watch` | Evalite watch mode + UI on `localhost:3006`. |
 | `pnpm agent` | `src/scripts/agent-run.ts` — orchestrator end-to-end on the synthetic fixture, saving to `.artifacts/`. Uses `fixtureProvider`, so it needs no database. |
 | `pnpm probe-corpus "<query>"` | What `search_news` would return for a query against the live corpus (`--window`, `--limit`, `--fetch`). Costs one embedding — fractions of a cent — and is the way to tell a bad brief caused by *retrieval* from one caused by the prompt. |
-| `pnpm worker` | The scheduled worker. Long-running; needs Postgres and the `TELEGRAM_*` variables. |
+| `pnpm worker` | The scheduled worker. Long-running; needs Postgres, `TELEGRAM_BOT_TOKEN`, `RESEND_API_KEY`/`EMAIL_FROM`, and `PUBLIC_API_URL`/`UNSUBSCRIBE_SECRET`. |
 | `pnpm worker --once <id>` | Fire one schedule immediately and exit — the whole delivery path without waiting for a cron hour. Run it in `apps/agent`; the root script goes through Turbo, which swallows the flag. |
 | `pnpm seed-schedule --cron "0 7 * * *"` | Write a schedule row (`--timezone`, `--edition`, `--user`, `--topics` optional), until the admin API owns them. Re-running **rewrites** the row for that `(user, edition)` rather than adding a second one that would bill every brief twice. `--topics` takes a comma-separated list and adds them to that schedule (existing subjects are skipped, never duplicated) — the only way to create topics without the portal. |
 
@@ -230,11 +230,48 @@ not-financial-advice line in the delivered text. Two things it must not drop:
   a date-only value is formatted in UTC and only a real instant gets the
   schedule's zone.
 
-`delivery/deliver.ts` memoizes the Telegram config and `main` calls it **first**,
-so a missing token fails while someone is watching rather than at 07:00 tomorrow
-with a paid brief already generated. It is also the only module allowed to name
-grammY's `PartialSendError`: `deliveredBefore` exists so that type never travels
-up into `delivery/run.ts`.
+### Who the brief is addressed to
+
+**`delivery/recipient.ts` runs before `runBrief`, and that ordering is the point.**
+A reader chooses `email` or `telegram` on the account page, and every reason
+delivery could not succeed — an unsubscribe, an address not yet synced from
+Auth0, an unverified one, a Telegram channel with no chat id, an owner that no
+longer exists — is knowable from their row *before* a model is called. Resolving
+it first turns an undeliverable occurrence into a logged skip instead of a paid
+brief nobody receives. `lastRunAt` is untouched on a skip, exactly as on a failed
+delivery, so fixing the setting is enough for catch-up to deliver the next one.
+
+`chooseDestination` is **pure and separately exported** so that matrix is a unit
+test rather than something only a live database could exercise;
+`resolveRecipient` is the query plus the unsubscribe URL. `ScheduleDefinition`
+carries `userId` for this and nothing else. Two rules worth not rediscovering:
+
+- **There is no fallback to `TELEGRAM_CHAT_ID`.** A missing chat id is a skip.
+  Falling back to the environment would send one reader's brief to another the
+  moment there is a second user.
+- **An email suspension does not silence Telegram.** An unsubscribe is about
+  email, and the channel check comes first for that reason.
+
+The unsubscribe link is signed here, with `UNSUBSCRIBE_SECRET` — `apps/server`
+verifies it with the same secret and the same module
+(`@personal-agent/email/unsubscribe`). `loadDeliveryConfig` is separate from
+`loadAgentConfig` for the same reason `loadDatabaseConfig` is: addressing a brief
+is the worker's job, so an eval still runs with neither variable set, and
+`config.test.ts` pins it.
+
+`delivery/deliver.ts` memoizes **both** channel clients and `main` calls
+`loadDeliveryClients()` **first**, so a missing key fails while someone is
+watching rather than at 07:00 tomorrow with a paid brief already generated. Both
+load regardless of any one reader's setting — the worker serves every schedule in
+the table, and a reader can switch channel while it is running. It is also the
+only module allowed to name grammY's `PartialSendError`: `deliveredBefore` exists
+so that type never travels up into `delivery/run.ts`, and it returns 0 for email,
+which has no partial state — one call sends the whole brief or none of it.
+
+Email reuses `formatBrief` verbatim and adds two things: `formatSubject`, read off
+the same `EDITION_LABEL` as the body's heading so the two cannot come to
+disagree, and a trailing `Unsubscribe:` line. There is no HTML rendering, by
+decision — see [packages/email](../../packages/email/CLAUDE.md).
 
 ## The agent layer
 
@@ -476,12 +513,16 @@ discriminating and every model eval on it is meaningless.
   because a query must land in the vector space the documents were written into.
   They are declared once in `packages/env`, which is what keeps the two agreeing.
 - `loadDatabaseConfig()` — `DATABASE_URL` alone, read only by `src/db.ts`.
+- `loadDeliveryConfig()` — `PUBLIC_API_URL` + `UNSUBSCRIBE_SECRET`, read only by
+  `worker/delivery/recipient.ts`. Separate for the same reason as the last one:
+  addressing a brief is the worker's job, so an eval needs no signing secret.
 
-Keeping the third separate is what lets every eval, every unit test and
-`pnpm agent` run on a machine with no Postgres. `src/worker/config.ts` no longer
-exists; the worker reads `src/db.ts` like the corpus does, so there is one Prisma
-client per process rather than two. The `TELEGRAM_*` variables stay in
-`packages/telegram`'s loader; nothing here re-declares them.
+Keeping the last two separate is what lets every eval, every unit test and
+`pnpm agent` run on a machine with no Postgres and no signing secret.
+`src/worker/config.ts` no longer exists; the worker reads `src/db.ts` like the
+corpus does, so there is one Prisma client per process rather than two. The
+`TELEGRAM_*` and `RESEND_API_KEY`/`EMAIL_FROM` variables stay in their own
+packages' loaders; nothing here re-declares them.
 
 `vite.config.ts` loads the repo-root `.env` via `envDir` — evalite does not read
 `.env` on its own, and already-set variables still take precedence. `envPrefix`

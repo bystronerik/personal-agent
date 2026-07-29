@@ -28,6 +28,7 @@ await runScript(async () => {
 
   const sent = await sendMessage(
     config,
+    config.chatId,
     long ? longTestMessage() : TEST_MESSAGE,
   )
 

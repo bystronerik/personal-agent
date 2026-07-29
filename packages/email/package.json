@@ -1,0 +1,33 @@
+{
+  "name": "@personal-agent/email",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./unsubscribe": {
+      "types": "./src/unsubscribe.ts",
+      "default": "./src/unsubscribe.ts"
+    }
+  },
+  "files": ["src"],
+  "scripts": {
+    "build": "tsc",
+    "email:send-test": "tsx --env-file-if-exists=../../.env src/scripts/send-test.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@personal-agent/env": "workspace:*",
+    "resend": "6.18.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.5.3",
+    "vitest": "^4.1.10"
+  }
+}

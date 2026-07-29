@@ -34,6 +34,30 @@ export const AUTH0_AUDIENCE = envVar(
   }),
 )
 
+/**
+ * A machine-to-machine application authorised for the Auth0 Management API with
+ * the `read:users` scope — a different application from the SPA the portal signs
+ * in with, and the only way to read a subject's email address.
+ */
+export const AUTH0_MANAGEMENT_CLIENT_ID = envVar(
+  'AUTH0_MANAGEMENT_CLIENT_ID',
+  z
+    .string({
+      error: 'is required — the client id of your Auth0 machine-to-machine app',
+    })
+    .min(1),
+)
+
+export const AUTH0_MANAGEMENT_CLIENT_SECRET = envVar(
+  'AUTH0_MANAGEMENT_CLIENT_SECRET',
+  z
+    .string({
+      error:
+        'is required — the client secret of your Auth0 machine-to-machine app',
+    })
+    .min(1),
+)
+
 // --- API server (apps/server) ---
 
 const DEFAULT_API_PORT = 3001
@@ -47,6 +71,28 @@ export const API_PORT = envVar(
 export const CORS_ORIGIN = envVar(
   'CORS_ORIGIN',
   z.url('must be a URL').default(DEFAULT_CORS_ORIGIN),
+)
+
+/**
+ * Where the API answers from the public internet — not `CORS_ORIGIN`, which is
+ * the portal. `apps/agent` builds unsubscribe links against this, and it is the
+ * one host a mail client reaches without a session.
+ */
+export const PUBLIC_API_URL = envVar(
+  'PUBLIC_API_URL',
+  z.url('must be a URL').default(`http://localhost:${DEFAULT_API_PORT}`),
+)
+
+/**
+ * Signs the unsubscribe token. `apps/server` verifies what `apps/agent` signed,
+ * so the two processes must be given the same value; rotating it invalidates the
+ * link in every brief already delivered.
+ */
+export const UNSUBSCRIBE_SECRET = envVar(
+  'UNSUBSCRIBE_SECRET',
+  z
+    .string({ error: 'is required — generate one with `openssl rand -hex 32`' })
+    .min(32, 'must be at least 32 characters'),
 )
 
 // --- OpenRouter (apps/agent) ---
@@ -113,9 +159,37 @@ export const TELEGRAM_API_BASE = envVar(
   z.url('must be a URL').default(DEFAULT_TELEGRAM_API_BASE),
 )
 
+/**
+ * The `telegram:*` dev scripts only. Delivery reads `users.telegram_chat_id`,
+ * so this is no longer where a brief is addressed and there is no fallback to it.
+ */
 export const TELEGRAM_CHAT_ID = envVar(
   'TELEGRAM_CHAT_ID',
   z
     .string({ error: 'is required — run `pnpm telegram:chat-id` to find it' })
     .regex(CHAT_ID, 'expected a numeric chat id or an @public_name'),
+)
+
+// --- Email (packages/email) ---
+
+/** `Name <local@domain>` or a bare address. */
+const FROM_ADDRESS = /^(.+\s)?<?[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+>?$/
+
+export const RESEND_API_KEY = envVar(
+  'RESEND_API_KEY',
+  z
+    .string({
+      error: 'is required — create a key at https://resend.com/api-keys',
+    })
+    .startsWith('re_', 'does not look like a Resend key (expected re_…)'),
+)
+
+/** Must sit on a domain verified in Resend, or every send is rejected. */
+export const EMAIL_FROM = envVar(
+  'EMAIL_FROM',
+  z
+    .string({
+      error: 'is required — a sender on a domain you have verified in Resend',
+    })
+    .regex(FROM_ADDRESS, 'expected an address or "Name <address>"'),
 )

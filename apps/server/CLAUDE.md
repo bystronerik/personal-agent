@@ -1,6 +1,7 @@
 # `@personal-agent/server`
 
-The NestJS admin API — auth, config, health, schedules, topics, user preferences. Depends on
+The NestJS admin API — auth, config, health, schedules, topics, user preferences
+and delivery. Depends on
 `@personal-agent/db` for all database access and on `@personal-agent/schemas` for
 the contract it validates and publishes. Its `src/generated/openapi.yaml` is the
 codegen input for `apps/client`. See the [root CLAUDE.md](../../CLAUDE.md) for the
@@ -107,6 +108,23 @@ only `userId`; Auth0 sends many more claims and this API acts on none of them.
 It is also the body of `GET /me`, so it lives in `@personal-agent/schemas/auth`
 rather than in the strategy — which keeps only its internal `AccessTokenPayload`.
 
+**The access token carries no email**, so `Auth0ProfileService` reads one from
+the Management API — a client-credentials token against
+`https://<domain>/oauth/token`, memoized until a minute before its `exp`, then
+`GET /api/v2/users/{sub}`. That needs a **machine-to-machine Auth0 application**
+(`AUTH0_MANAGEMENT_CLIENT_*`), authorised for the Management API with
+`read:users`; it is not the SPA client, and it does have a secret. A failed read
+returns `null` and logs rather than throwing: a profile that cannot be fetched
+must not fail the request that happened to trigger the sync.
+
+`UsersService` keeps **two** in-process sets for that, not one. `ensured` is the
+row upsert; `syncAttempted` is recorded on failure *as well as* success, because
+a subject Auth0 holds no address for would otherwise mean a Management API call
+on every single request. Combined with syncing only when `email` is null, a
+transient Auth0 outage is retried on the next process start — and a changed
+address is never picked up, which is the accepted cost of "sync once after
+registration".
+
 `validate` also **ensures the caller's `users` row**, through `UsersService`,
 before it returns. That happens in the auth path rather than in a handler because
 the row is the foreign key every user-scoped table references: doing it here
@@ -142,6 +160,36 @@ Ownership is the `where` clause, never a check after the read: `deleteMany`/
 unique that `@@unique([id, userId])` provides. An id belonging to someone else
 therefore reads as missing rather than forbidden, which is also what the topics
 module does one level down.
+
+## Unsubscribe
+
+`unsubscribe/` is the only controller reachable **with no session at all**, and
+the shape of it is the whole design:
+
+- **`GET /unsubscribe?token=…` verifies and changes nothing**, then 302s to
+  `${corsOrigin}/unsubscribe?token=…` (or `?error=invalid`). Corporate mail
+  scanners prefetch the links in a message body, so a `GET` that suspended
+  delivery would unsubscribe readers who never clicked. The portal it lands on is
+  what asks.
+- **`POST /unsubscribe?token=…` commits**, and serves both the RFC 8058
+  one-click button — which a mail client sends only on a real user action — and
+  the portal's confirmation. The token stays in the *query* because a one-click
+  `POST` carries a fixed body of its own with no room for ours.
+- The whole controller is **`@ApiExcludeController()`**, so orval generates no
+  hooks for it. It must not: a generated hook attaches an access token that, on
+  this route, by definition is not there. `apps/client` reaches the `POST` with a
+  plain `fetch` — the one place it is allowed to.
+
+The token itself is **not defined here** — it lives in
+`@personal-agent/email/unsubscribe`, because `apps/agent` signs what this
+verifies and one encoding in one file is what keeps two processes agreeing.
+Suspension is `updateMany` scoped to `emailSuspendedAt: null`, so unsubscribing
+twice does not move the recorded moment.
+
+Undoing it is `POST /me/preferences/resume-email`, deliberately its own
+authenticated route rather than a writable field on the patch: an unsubscribe is
+the reader's decision, so no other control on the account page can reverse it as
+a side effect.
 
 ## Config
 
@@ -215,6 +263,10 @@ OpenAPI 3.0 document may say and what orval accepts:
   is left pointing at the pre-rename name — `listTopics` referencing
   `TopicDto_Output` when the component is `Topic_Output`. Without this, orval
   refuses to generate at all.
+
+A route excluded with `@ApiExcludeController()` is absent from the document
+entirely, so it generates no client and appears in no diff — `unsubscribe/` is
+the only one, and it is excluded on purpose (see above).
 
 `scripts/openapi-env.ts` fills in **placeholder credentials** for anything absent,
 because the document is derived from decorators alone and codegen must work on a

@@ -9,6 +9,7 @@ import type { UpdateUserPreferences } from '@personal-agent/schemas/users'
 import {
   getGetMyPreferencesQueryKey,
   useGetMyPreferences,
+  useResumeEmailDelivery,
   useUpdateMyPreferences,
 } from '../generated/api/preferences/preferences'
 import { useDescribeError } from '../lib/errors'
@@ -23,22 +24,28 @@ export const usePreferences = () => {
   const queryClient = useQueryClient()
   const describeError = useDescribeError()
 
+  const mutation = {
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: getGetMyPreferencesQueryKey(),
+      }),
+    onError: (error: unknown) =>
+      notifications.show({ color: 'red', message: describeError(error) }),
+  }
+
   const query = useGetMyPreferences()
-  const update = useUpdateMyPreferences({
-    mutation: {
-      onSuccess: () =>
-        queryClient.invalidateQueries({
-          queryKey: getGetMyPreferencesQueryKey(),
-        }),
-      onError: (error) =>
-        notifications.show({ color: 'red', message: describeError(error) }),
-    },
-  })
+  const update = useUpdateMyPreferences({ mutation })
+  const resume = useResumeEmailDelivery({ mutation })
 
   return {
     stored: query.data?.status === OK ? query.data.data : undefined,
-    isSaving: update.isPending,
+    isSaving: update.isPending || resume.isPending,
     save: (patch: UpdateUserPreferences) => update.mutate({ data: patch }),
+    /**
+     * An unsubscribe is undone by its own call, never by `save` — so no other
+     * control on the account page can re-enable email as a side effect.
+     */
+    resumeEmail: () => resume.mutate(),
   }
 }
 

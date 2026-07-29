@@ -13,7 +13,9 @@ import { useTranslation } from 'react-i18next'
 import { LocaleSchema, ThemeSchema } from '@personal-agent/schemas/users'
 
 import { useLocale } from '../i18n/useLocale'
+import { usePreferences } from '../preferences/usePreferences'
 import { useTheme } from '../preferences/useTheme'
+import { DeliveryCard } from './account/DeliveryCard'
 
 const CONTROL_WIDTH = 200
 
@@ -22,6 +24,7 @@ export function AccountPage() {
   const { t } = useTranslation()
   const locale = useLocale()
   const theme = useTheme()
+  const { stored } = usePreferences()
 
   return (
     <Stack maw={640}>
@@ -71,6 +74,8 @@ export function AccountPage() {
           </Group>
         </Stack>
       </Card>
+
+      {stored && <DeliveryCard stored={stored} />}
     </Stack>
   )
 }

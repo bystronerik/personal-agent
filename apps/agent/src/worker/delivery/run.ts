@@ -6,6 +6,7 @@ import { markRun, type ScheduleDefinition } from '../scheduling/schedules'
 import { deliverBrief, deliveredBefore } from './deliver'
 import { recordDelivered } from './delivered'
 import { buildBriefInput } from './input'
+import { resolveRecipient } from './recipient'
 
 /**
  * Sized for a scheduled run rather than left to the core's cautious default,
@@ -26,6 +27,14 @@ export async function runScheduledBrief(
   schedule: ScheduleDefinition,
   now: Date,
 ): Promise<void> {
+  const recipient = await resolveRecipient(schedule.userId)
+  if (recipient.kind === 'skip') {
+    console.warn(
+      `[${schedule.id}] not delivering — ${recipient.reason}; no brief generated`,
+    )
+    return
+  }
+
   const input = await buildBriefInput(schedule, now)
   const sessionId = briefSessionId(input)
   console.log(`[${schedule.id}] ${input.edition} brief starting — ${sessionId}`)
@@ -38,7 +47,7 @@ export async function runScheduledBrief(
 
   let messages: number
   try {
-    messages = await deliverBrief(brief, schedule.timezone)
+    messages = await deliverBrief(brief, schedule.timezone, recipient)
   } catch (error) {
     const partial = deliveredBefore(error)
     if (partial > 0) {
@@ -53,6 +62,6 @@ export async function runScheduledBrief(
   const recorded = await recordDelivered(schedule.id, brief, now)
 
   console.log(
-    `[${schedule.id}] delivered in ${messages} message(s), ${recorded} article(s) recorded — $${costUsd.toFixed(4)}`,
+    `[${schedule.id}] delivered by ${recipient.kind} in ${messages} message(s), ${recorded} article(s) recorded — $${costUsd.toFixed(4)}`,
   )
 }

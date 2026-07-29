@@ -18,7 +18,11 @@ so the portal validates against the same Zod objects the API does. See the
 
 The portal consumes the API **only** through orval-generated TanStack Query
 hooks. `src/generated/api/` is regenerated output — never hand-edit it, and never
-hand-write a fetch call alongside it. Names come from the API (see the root
+hand-write a fetch call alongside it. **`pages/UnsubscribePage.tsx` is the single
+exception**, and it is one the rule cannot cover: the route it calls is
+`@ApiExcludeController()` on the server precisely *because* it is unauthenticated,
+so there is no hook to generate and a generated one would attach a token that is
+not there. Names come from the API (see the root
 file). Output is split by OpenAPI tag — `generated/topics/topics.ts`,
 `generated/me/me.ts` — with every schema under `generated/model/`.
 
@@ -62,11 +66,21 @@ API cannot verify. Queries are configured `retry: false`, so an auth or
 validation failure surfaces immediately instead of after backoff.
 
 **There is no sign-in screen: `App.tsx` redirects to Auth0 itself.** An
-unauthenticated visitor sees a loader, never a log-in button, so the only
-unauthenticated surface left is the `auth.rejected` alert. Two conditions guard
-the effect and both are load-bearing: `error` short-circuits it, or a rejected
-sign-in bounces straight back to Auth0 in a loop, and a `useRef` latch keeps
-StrictMode's double-invoked effect from opening two PKCE transactions.
+unauthenticated visitor sees a loader, never a log-in button. Three conditions
+guard the effect and all are load-bearing: `error` short-circuits it, or a
+rejected sign-in bounces straight back to Auth0 in a loop; a `useRef` latch keeps
+StrictMode's double-invoked effect from opening two PKCE transactions; and
+`isPublic` exempts one path.
+
+**`/unsubscribe` is that path, and it renders outside the router.** It is reached
+from a link in a delivered brief, and a reader who wants out is exactly the
+reader who will not sign in to get there. The check has to live in `App.tsx`
+rather than in the route tree — the Auth0 redirect fires before `RouterProvider`
+ever mounts — and rendering it outside the router keeps the typed tree describing
+only the authenticated portal. The API's `GET /unsubscribe` has already verified
+the token and redirected here **without changing anything**; this page is the
+asking, and its button is what `POST`s. nginx already serves the shell for any
+unknown path, so no server config changes with it.
 
 ## Env
 
@@ -96,8 +110,9 @@ rather than restating it.
 
 The runtime imports crossing a workspace boundary are `lib/api-fetcher.ts`
 reaching for `ApiErrorSchema`, the `Locale`/`Theme` schemas and
-defaults in `src/i18n/`, `src/preferences/` and `pages/AccountPage.tsx`, and the
-schedules schemas and limits in `pages/SchedulesPage.tsx` and
+defaults in `src/i18n/`, `src/preferences/` and `pages/AccountPage.tsx`, the
+`DeliveryChannel`/`TelegramChatId` schemas in `pages/account/DeliveryCard.tsx`,
+and the schedules schemas and limits in `pages/SchedulesPage.tsx` and
 `pages/schedules/ScheduleForm.tsx` — see
 [Internationalisation](#internationalisation) and [Preferences](#preferences).
 
@@ -146,9 +161,12 @@ maps `en-GB` onto `en`, so `resolvedLanguage` — never `language` — is what t
 `src/preferences/usePreferences.ts` is the **only** caller of the generated
 preferences hooks, and it exports two things:
 
-- **`usePreferences`** — the query, the mutation, its cache invalidation and its
-  error notification in one place. Every control patches through its `save`, so a
-  partial `PATCH` never drops a sibling field.
+- **`usePreferences`** — the query, the mutations, their cache invalidation and
+  their error notification in one place. Every control patches through its
+  `save`, so a partial `PATCH` never drops a sibling field. It also exposes
+  **`resumeEmail`**, which is a *separate route* rather than part of `save`: an
+  unsubscribe is the reader's decision, so no other control on the page can
+  reverse it as a side effect.
 - **`usePreferenceSync`** — the effects that apply the stored `locale` and
   `theme` to i18next and Mantine. **`AppLayout` mounts it, not the page
   that edits them**: the controls live on `AccountPage` now, so an effect owned by
@@ -184,6 +202,8 @@ params would break the callback — so the index route renders `DashboardPage`
 directly rather than redirecting to a `/dashboard` path. Five routes today:
 `/` (dashboard), `/schedules`, `/schedules/new`, `/schedules/$id`, `/account` —
 a static segment outranks a dynamic sibling, so `new` is not read as an id.
+`/unsubscribe` is deliberately **not** among them; it renders above the router,
+for the reason given under [Auth](#auth).
 
 `AppShell.Section grow` on the navbar's main list is what keeps the footer
 pinned to the bottom.
@@ -230,6 +250,19 @@ profile — name, email, picture — above a second card holding the preference
 controls: a `Select` for language and a `SegmentedControl` for theme, both fed
 from their schema's `options` so a value the contract does not admit cannot be
 offered. The API's `userId` is still not something a reader needs to see.
+
+A third card, `pages/account/DeliveryCard.tsx`, is where a brief's channel is
+chosen. Three things about it are decisions rather than accidents:
+
+- **The chat-id field is rendered whatever the channel is.** The API rejects
+  `telegram` without a chat id, so a field revealed only *by* that selection
+  would be unreachable at the moment it is needed.
+- **The channel saves on change; the chat id saves on a button.** One is a
+  discrete choice, the other is typing, and a `PATCH` per keystroke is not a
+  contract the API should have to absorb.
+- **The suspension warning carries its own action.** `emailSuspendedReason` is a
+  closed enum, so `suspensionReasons` in `en.ts` is typed `Record<…, string>`
+  the same way `byCode` is — a reason added server-side fails `pnpm build` here.
 **The schedules pages are live against `/schedules`** — a list with a working
 enable toggle, a create route and a detail route that patches or deletes.
 `pages/schedules/cron.ts` holds `describeCron`, which turns a cron field into

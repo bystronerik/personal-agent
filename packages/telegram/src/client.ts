@@ -2,7 +2,7 @@ import { autoRetry } from '@grammyjs/auto-retry'
 import { Api } from 'grammy'
 import type { Message, Update } from 'grammy/types'
 
-import type { BotConnection, TelegramConfig } from './config'
+import type { BotConnection } from './config'
 import { splitMessage } from './split'
 
 const REQUEST_TIMEOUT_SECONDS = 10
@@ -53,17 +53,21 @@ export class PartialSendError extends Error {
  * Sends sequentially: Telegram preserves order per chat only for requests it
  * receives in order, and a burst can trip the per-chat rate limit, which
  * autoRetry absorbs.
+ *
+ * The chat is an argument rather than part of the connection because a brief is
+ * addressed to `users.telegram_chat_id` — one bot, a chat per reader.
  */
 export async function sendMessage(
-  config: TelegramConfig,
+  connection: BotConnection,
+  chatId: string,
   text: string,
 ): Promise<Message.TextMessage[]> {
-  const api = createApi(config)
+  const api = createApi(connection)
 
   const sent: Message.TextMessage[] = []
   for (const chunk of splitMessage(text)) {
     try {
-      sent.push(await api.sendMessage(config.chatId, chunk))
+      sent.push(await api.sendMessage(chatId, chunk))
     } catch (error) {
       throw sent.length > 0 ? new PartialSendError(sent.length, error) : error
     }

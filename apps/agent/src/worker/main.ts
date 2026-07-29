@@ -1,5 +1,6 @@
 import { disconnectDb } from '../db'
-import { telegramConfig } from './delivery/deliver'
+import { loadDeliveryClients } from './delivery/deliver'
+import { deliveryConfig } from './delivery/recipient'
 import { runScheduledBrief } from './delivery/run'
 import { parseWorkerArgs } from './runtime/cli-args'
 import { runOnce } from './runtime/run-once'
@@ -15,7 +16,8 @@ import { startJob } from './scheduling/start-job'
 
 async function main(): Promise<void> {
   // Fail while someone is watching rather than at the first fire.
-  telegramConfig()
+  loadDeliveryClients()
+  deliveryConfig()
 
   const shutdown = createShutdown({ disconnect: disconnectDb })
   // Above the `--once` branch: every path below this can fire a paid brief.

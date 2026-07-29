@@ -92,6 +92,28 @@ value dropped from `LocaleSchema` or `ThemeSchema` degrades to the default
 rather than failing the request. `pnpm seed-schedule` upserts one,
 because on a fresh database nothing has called the auth path that would.
 
+**It now also holds where a brief goes**, which is the one place reader identity
+and delivery meet: `email` / `emailVerified` (synced once from the Auth0
+Management API, since the access token carries only `sub`), `deliveryChannel`
+and `telegramChatId`, and the `emailSuspendedAt` / `emailSuspendedReason` pair an
+unsubscribe writes. Four notes on the shape:
+
+- **`email` is not unique.** Two Auth0 identities — `auth0|…` and
+  `google-oauth2|…` — can legitimately carry the same address, and a constraint
+  here would fail the sync rather than the sign-in that caused it.
+- **`deliveryChannel` is a plain `String`**, like `locale`, `theme` and
+  `edition`: `DeliveryChannelSchema` in `packages/schemas` stays the single source
+  of the two values, and both readers parse with `.catch(DEFAULT_DELIVERY_CHANNEL)`
+  so a hand-edited row degrades to email rather than dropping a brief.
+- **There is no fallback from `telegramChatId` to `TELEGRAM_CHAT_ID`.** A null
+  chat id on the Telegram channel is a skipped run, deliberately: falling back to
+  the environment would mail one reader's brief into another reader's chat the
+  moment there is more than one user.
+- **`emailSuspendedAt` is the flag; the reason is a separate column** so a bounce
+  or complaint webhook can record a different one later without a migration. Only
+  `unsubscribed` is written today, and `emailSuspendedAt` alone decides whether
+  delivery stops.
+
 `Schedule` splits into **intent** the owner sets (`cron`, `timezone`, `edition`,
 `enabled`) and one column the worker writes (`lastRunAt`). There is deliberately
 no `nextRunAt`: croner holds the live jobs in memory, so a stored next-fire time

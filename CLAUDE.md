@@ -5,6 +5,7 @@ Only what spans packages. Internals live in each workspace's own `CLAUDE.md`.
 | Package | What it is |
 | --- | --- |
 | [`packages/db`](packages/db/CLAUDE.md) | Prisma schema, migrations, generated client |
+| [`packages/email`](packages/email/CLAUDE.md) | Resend client for brief delivery + the unsubscribe token both apps share |
 | [`packages/embedding`](packages/embedding/CLAUDE.md) | The OpenRouter embeddings client, and the query/document asymmetry |
 | [`packages/env`](packages/env/CLAUDE.md) | Every env variable's name/schema/default + the shared loader |
 | [`packages/schemas`](packages/schemas/CLAUDE.md) | Zod schemas the API contract is made of |
@@ -41,6 +42,16 @@ Only what spans packages. Internals live in each workspace's own `CLAUDE.md`.
   one `articles` row per story for every reader; a schedule's `topics` steer what
   its brief searches for. Two readers interested in the same subject cost one
   fetch and one embedding.
+- **Delivery is addressed to the reader, and an undeliverable brief is never
+  written.** `users` carries the channel (`email` or `telegram`), the address, and
+  the chat id; the worker resolves all of that **before** `runBrief`, so a
+  suspended, unverified or unaddressable reader costs a skipped occurrence rather
+  than a paid one. `lastRunAt` stays untouched on a skip, so fixing the setting is
+  enough for catch-up to deliver the next brief.
+- **Unsubscribing is a row, not a mailbox rule.** The link in every email is an
+  HMAC over the reader's id, signed by `apps/agent` and verified by `apps/server`
+  from one module in `packages/email`. It suspends delivery in Postgres, the
+  portal says so, and only an authenticated act by that reader undoes it.
 - **Predictions are logged experiments, never financial advice** — machine-checkable,
   scored against reality later.
 - **The eval harness justifies prompt/agent changes** with a score, not a vibe.
@@ -52,8 +63,9 @@ Only what spans packages. Internals live in each workspace's own `CLAUDE.md`.
 ```
 apps/client ──(orval codegen from apps/server openapi.yaml)──> apps/server ──┐
      └──────────────> packages/schemas <──────────────┘                      ├──> packages/db ──> Postgres
-apps/agent (top-of-graph scheduled worker) ──> packages/telegram             ─┤
-apps/agent ──> packages/schemas (Edition alone — the schedules API writes it) ─┤
+apps/agent (top-of-graph scheduled worker) ──> packages/telegram, /email     ─┤
+apps/server ──> packages/email/unsubscribe (the token only, never the SDK)   ─┤
+apps/agent ──> packages/schemas (Edition + the delivery enums)               ─┤
 apps/ingest (top-of-graph corpus poller)                                     ─┤
 apps/agent, apps/ingest ──> packages/embedding                               ─┘
 ```
@@ -76,10 +88,19 @@ Every workspace dependency is one-directional:
   objects to validate a form before it becomes a request. Depends on nothing but
   `zod` — which every consumer must resolve to the *same* copy, or schemas stop
   validating silently (see [packages/schemas](packages/schemas/CLAUDE.md)).
-  **`apps/agent` is the third consumer, for `EditionSchema` alone**: the admin API
-  writes the `edition` column and the worker parses it, so a value one side admits
-  and the other rejects is a schedule that never fires.
-- **`packages/env` is the single home for environment loading.** All five other
+  **`apps/agent` is the third consumer**, for the enums the API writes and the
+  worker reads back: `EditionSchema`, and now `DeliveryChannelSchema` with its
+  default. Both name plain columns, so a value one side admits and the other
+  rejects is a schedule that never fires or a brief sent down a channel nobody
+  chose.
+- **`packages/email` owns the unsubscribe token, and exposes it separately from
+  the SDK.** `apps/agent` signs, `apps/server` verifies, and one encoding in one
+  file is what keeps two processes agreeing about a security-critical string. The
+  server reaches it through the **`./unsubscribe` subpath**, never the root
+  barrel — the same structural split as `packages/env`'s `./client`, and for the
+  same reason: rolldown inlines `@personal-agent/*`, so importing the root would
+  pull the Resend SDK into an API bundle that sends no mail.
+- **`packages/env` is the single home for environment loading.** All six other
   workspaces depend on it; it depends on nothing but `zod`. The browser reaches it
   **only** through the `@personal-agent/env/client` subpath, which never imports the
   server registry — so a server variable cannot land in the client bundle.
@@ -227,8 +248,11 @@ readable in the image history, and the bundle is public anyway.
   imports** even when it reaches it through a workspace package: `apps/server`,
   `apps/agent` and `apps/ingest` all depend on `@prisma/adapter-pg` directly because
   `packages/db` is inlined into them, `apps/agent` on `grammy` for
-  `packages/telegram`, and `apps/agent` and `apps/ingest` on `@openrouter/sdk` for
-  `packages/embedding`.
+  `packages/telegram` and on `resend` for `packages/email`, and `apps/agent` and
+  `apps/ingest` on `@openrouter/sdk` for `packages/embedding`. **`apps/server` is
+  the one that does not need `resend`**, because it imports
+  `@personal-agent/email/unsubscribe` rather than the package root — which is what
+  that subpath exists to make possible.
   **A bundler's `external` predicate is consulted twice per import** — once with
   the written specifier, once with the resolved absolute path — so a predicate
   that forgets the absolute case externalises everything and still exits 0,

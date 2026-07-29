@@ -6,6 +6,8 @@ import {
   OPENROUTER_EMBEDDING_DIMENSIONS,
   OPENROUTER_EMBEDDING_MODEL,
   OPENROUTER_MODEL,
+  PUBLIC_API_URL,
+  UNSUBSCRIBE_SECRET,
 } from '@personal-agent/env'
 
 const AGENT_ENV = {
@@ -46,3 +48,19 @@ export const loadEmbeddingConfig = (
   source: NodeJS.ProcessEnv = process.env,
 ): EmbeddingConfig =>
   loadEnv(EMBEDDING_ENV, { source, subject: 'The agent embedding client' })
+
+const DELIVERY_ENV = {
+  publicApiUrl: PUBLIC_API_URL,
+  unsubscribeSecret: UNSUBSCRIBE_SECRET,
+}
+
+/**
+ * What addressing a brief needs beyond the channel's own client: the origin an
+ * unsubscribe link points at and the secret that signs it. Separate for the same
+ * reason `loadDatabaseConfig` is — only the worker reads it, so an eval still
+ * runs with neither variable set.
+ */
+export const loadDeliveryConfig = (source: NodeJS.ProcessEnv = process.env) =>
+  loadEnv(DELIVERY_ENV, { source, subject: 'Brief delivery' })
+
+export type DeliveryConfig = ReturnType<typeof loadDeliveryConfig>

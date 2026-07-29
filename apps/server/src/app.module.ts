@@ -9,6 +9,7 @@ import { HealthModule } from './health/health.module'
 import { PrismaModule } from './prisma/prisma.module'
 import { SchedulesModule } from './schedules/schedules.module'
 import { TopicsModule } from './topics/topics.module'
+import { UnsubscribeModule } from './unsubscribe/unsubscribe.module'
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { TopicsModule } from './topics/topics.module'
     HealthModule,
     SchedulesModule,
     TopicsModule,
+    UnsubscribeModule,
   ],
   providers: [
     { provide: APP_PIPE, useClass: ZodValidationPipe },

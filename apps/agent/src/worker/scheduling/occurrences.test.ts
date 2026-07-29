@@ -5,6 +5,7 @@ import type { ScheduleDefinition } from './schedules'
 
 const morning: ScheduleDefinition = {
   id: 'one',
+  userId: 'auth0|reader',
   cron: '0 7 * * *',
   timezone: 'Europe/Prague',
   edition: 'morning',
